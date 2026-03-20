@@ -1,12 +1,10 @@
-# Dockerfile – Auth Service (Symfony 7 / PHP 8.3)
+# Dockerfile – Event Service (Symfony 7 / PHP 8.3)
 # Multi-stage build : builder pour les extensions PHP,
 # runtime pour l'image finale légère.
 #
 # IMPORTANT : Ce Dockerfile ne fait PAS composer install.
 # L'installation des dépendances est gérée par le script setup.sh
-# via : docker compose exec auth-service composer install
-# Cela permet à n'importe qui de cloner le repo et lancer ./setup.sh
-# sans avoir PHP ou Composer installés sur sa machine.
+# via : docker compose exec event-service composer install
 
 # ─────────────────────────────────────────────────────────────
 # STAGE 1 : builder
@@ -70,17 +68,15 @@ COPY . .
 # Créer les dossiers nécessaires à Symfony avec les bonnes permissions
 # var/cache : cache du container DI, routes, etc.
 # var/log   : logs applicatifs Symfony
-# config/jwt : dossier pour les clés JWT (générées par setup.sh)
-RUN mkdir -p var/cache var/log config/jwt \
-    && chmod -R 777 var/ \
-    && chmod -R 700 config/jwt
+RUN mkdir -p var/cache var/log \
+    && chmod -R 777 var/
 
-# Exposer le port interne du Auth Service
-EXPOSE 8001
+# Exposer le port interne du Event Service
+EXPOSE 8003
 
 # Healthcheck – Docker vérifie que le service répond toutes les 15s
 HEALTHCHECK --interval=15s --timeout=5s --start-period=60s --retries=5 \
-    CMD wget -qO- http://localhost:8001/health || exit 1
+    CMD wget -qO- http://localhost:8003/health || exit 1
 
 # Copier et activer le script de démarrage
 COPY docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh

@@ -1,12 +1,20 @@
 # docker-compose.yml – Orchestration complète des services
 # Lancement : docker compose up --build
+#
+# Architecture réseau sécurisée :
+#   frontend_network  → Nginx ↔ API Gateway ↔ Frontend
+#   backend_network   → API Gateway ↔ Microservices ↔ BDD ↔ RabbitMQ
+#
+# Le frontend ne peut jamais atteindre les microservices directement.
+# Tout passe obligatoirement par l'API Gateway.
 
 services:
 
+  # ─────────────────────────────────────────────────────────────
   # BASES DE DONNÉES – 4 instances PostgreSQL isolées
-  # Chaque service a sa propre BDD, aucun partage entre services
+  # Réseau : backend_network uniquement
+  # ─────────────────────────────────────────────────────────────
 
-  # BDD du Auth Service – port hôte 5432
   auth-db:
     image: postgres:16-alpine
     container_name: reservation_auth_db
@@ -16,22 +24,18 @@ services:
       POSTGRES_PASSWORD: ${AUTH_DB_PASSWORD}
       POSTGRES_DB: ${AUTH_DB_NAME}
     volumes:
-      # Volume nommé pour persister les données entre redémarrages
       - auth_db_data:/var/lib/postgresql/data
     ports:
-      # Exposé sur l'hôte uniquement pour les outils externes (TablePlus, DBeaver)
       - "5432:5432"
     networks:
-      - reservation_network
+      - backend_network
     healthcheck:
-      # pg_isready vérifie que PostgreSQL accepte les connexions
       test: ["CMD-SHELL", "pg_isready -U ${AUTH_DB_USER} -d ${AUTH_DB_NAME}"]
       interval: 10s
       timeout: 5s
       retries: 5
       start_period: 10s
 
-  # BDD du User Service – port hôte 5433
   user-db:
     image: postgres:16-alpine
     container_name: reservation_user_db
@@ -45,7 +49,7 @@ services:
     ports:
       - "5433:5432"
     networks:
-      - reservation_network
+      - backend_network
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${USER_DB_USER} -d ${USER_DB_NAME}"]
       interval: 10s
@@ -53,7 +57,6 @@ services:
       retries: 5
       start_period: 10s
 
-  # BDD du Event Service – port hôte 5434
   event-db:
     image: postgres:16-alpine
     container_name: reservation_event_db
@@ -67,7 +70,7 @@ services:
     ports:
       - "5434:5432"
     networks:
-      - reservation_network
+      - backend_network
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${EVENT_DB_USER} -d ${EVENT_DB_NAME}"]
       interval: 10s
@@ -75,7 +78,6 @@ services:
       retries: 5
       start_period: 10s
 
-  # BDD du Ticket Service – port hôte 5435
   ticket-db:
     image: postgres:16-alpine
     container_name: reservation_ticket_db
@@ -89,7 +91,7 @@ services:
     ports:
       - "5435:5432"
     networks:
-      - reservation_network
+      - backend_network
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${TICKET_DB_USER} -d ${TICKET_DB_NAME}"]
       interval: 10s
@@ -97,8 +99,10 @@ services:
       retries: 5
       start_period: 10s
 
+  # ─────────────────────────────────────────────────────────────
   # RABBITMQ – Broker de messages asynchrones
-  # Interface de management accessible sur http://localhost:15672
+  # Réseau : backend_network uniquement
+  # ─────────────────────────────────────────────────────────────
   rabbitmq:
     image: rabbitmq:3-management
     container_name: reservation_rabbitmq
@@ -108,26 +112,26 @@ services:
       RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASSWORD}
       RABBITMQ_DEFAULT_VHOST: ${RABBITMQ_VHOST}
     volumes:
-      # Persister les messages entre redémarrages
       - rabbitmq_data:/var/lib/rabbitmq
     ports:
-      - "5672:5672"    # Port AMQP pour les connexions des services
-      - "15672:15672"  # Port UI de management (navigateur)
+      - "5672:5672"
+      - "15672:15672"
     networks:
-      - reservation_network
+      - backend_network
     healthcheck:
-      # rabbitmq-diagnostics ping vérifie que le broker répond
       test: ["CMD", "rabbitmq-diagnostics", "ping"]
       interval: 15s
       timeout: 10s
       retries: 5
       start_period: 30s
 
+  # ─────────────────────────────────────────────────────────────
   # MICROSERVICES SYMFONY – Auth, User, Event
-  # depends_on avec service_healthy garantit que la BDD
-  # est prête avant que le service démarre
+  # Volumes : code source monté depuis l'hôte
+  # vendor/ persisté dans un volume nommé (installé par setup.sh)
+  # Réseau : backend_network uniquement
+  # ─────────────────────────────────────────────────────────────
 
-  # Auth Service – Gestion JWT et authentification
   auth-service:
     build:
       context: ./services/auth-service
@@ -141,20 +145,27 @@ services:
       JWT_TTL: ${JWT_TTL:-3600}
       JWT_REFRESH_TTL: ${JWT_REFRESH_TTL:-604800}
       USER_SERVICE_URL: ${USER_SERVICE_URL}
+    volumes:
+      # Monte le code source local dans le container
+      # Toute modification locale est immédiatement visible
+      - ./services/auth-service:/app
+      # Volume nommé pour vendor/ – évite d'écraser les dépendances
+      # installées par setup.sh avec le dossier local (vide)
+      - auth_vendor:/app/vendor
+      # Volume nommé pour les clés JWT générées par setup.sh
+      - auth_jwt:/app/config/jwt
     depends_on:
       auth-db:
-        # Le service ne démarre que quand auth-db est healthy
         condition: service_healthy
     networks:
-      - reservation_network
+      - backend_network
     healthcheck:
       test: ["CMD-SHELL", "wget -qO- http://localhost:8001/health || exit 1"]
       interval: 15s
       timeout: 5s
       retries: 5
-      start_period: 30s
+      start_period: 60s
 
-  # User Service – Gestion des profils utilisateurs
   user-service:
     build:
       context: ./services/user-service
@@ -166,19 +177,23 @@ services:
       DATABASE_URL: ${USER_DATABASE_URL}
       JWT_SECRET: ${JWT_SECRET}
       TICKET_SERVICE_URL: ${TICKET_SERVICE_URL}
+    volumes:
+      # Monte le code source local dans le container
+      - ./services/user-service:/app
+      # Volume nommé pour vendor/
+      - user_vendor:/app/vendor
     depends_on:
       user-db:
         condition: service_healthy
     networks:
-      - reservation_network
+      - backend_network
     healthcheck:
       test: ["CMD-SHELL", "wget -qO- http://localhost:8002/health || exit 1"]
       interval: 15s
       timeout: 5s
       retries: 5
-      start_period: 30s
+      start_period: 60s
 
-  # Event Service – Gestion des événements et des places
   event-service:
     build:
       context: ./services/event-service
@@ -189,21 +204,30 @@ services:
       APP_ENV: ${APP_ENV:-prod}
       DATABASE_URL: ${EVENT_DATABASE_URL}
       JWT_SECRET: ${JWT_SECRET}
+    volumes:
+      # Monte le code source local dans le container
+      - ./services/event-service:/app
+      # Volume nommé pour vendor/
+      - event_vendor:/app/vendor
     depends_on:
       event-db:
         condition: service_healthy
     networks:
-      - reservation_network
+      - backend_network
     healthcheck:
       test: ["CMD-SHELL", "wget -qO- http://localhost:8003/health || exit 1"]
       interval: 15s
       timeout: 5s
       retries: 5
-      start_period: 30s
+      start_period: 60s
 
-  # MICROSERVICES NODE.JS – Ticket, Notification, API Gateway
+  # ─────────────────────────────────────────────────────────────
+  # MICROSERVICES NODE.JS – Ticket, Notification
+  # Volumes : code source monté depuis l'hôte
+  # node_modules/ et dist/ persistés dans des volumes nommés
+  # Réseau : backend_network uniquement
+  # ─────────────────────────────────────────────────────────────
 
-  # Ticket Service – Achat de billets et paiement CB simulé
   ticket-service:
     build:
       context: ./services/ticket-service
@@ -217,21 +241,27 @@ services:
       JWT_SECRET: ${JWT_SECRET}
       RABBITMQ_URL: ${RABBITMQ_URL}
       EVENT_SERVICE_URL: ${EVENT_SERVICE_URL}
+    volumes:
+      # Monte le code source local dans le container
+      - ./services/ticket-service:/app
+      # Volume nommé pour node_modules/
+      - ticket_node_modules:/app/node_modules
+      # Volume nommé pour dist/ (build TypeScript)
+      - ticket_dist:/app/dist
     depends_on:
       ticket-db:
         condition: service_healthy
       rabbitmq:
         condition: service_healthy
     networks:
-      - reservation_network
+      - backend_network
     healthcheck:
       test: ["CMD-SHELL", "wget -qO- http://localhost:8004/health || exit 1"]
       interval: 15s
       timeout: 5s
       retries: 5
-      start_period: 30s
+      start_period: 60s
 
-  # Notification Service – Consumer RabbitMQ, simulation email/SMS
   notification-service:
     build:
       context: ./services/notification-service
@@ -242,20 +272,29 @@ services:
       NODE_ENV: ${APP_ENV:-production}
       PORT: ${NOTIFICATION_SERVICE_PORT:-8005}
       RABBITMQ_URL: ${RABBITMQ_URL}
+    volumes:
+      # Monte le code source local dans le container
+      - ./services/notification-service:/app
+      # Volume nommé pour node_modules/
+      - notification_node_modules:/app/node_modules
+      # Volume nommé pour dist/ (build TypeScript)
+      - notification_dist:/app/dist
     depends_on:
       rabbitmq:
-        # Démarre uniquement quand RabbitMQ est prêt à recevoir des connexions
         condition: service_healthy
     networks:
-      - reservation_network
+      - backend_network
     healthcheck:
       test: ["CMD-SHELL", "wget -qO- http://localhost:8005/health || exit 1"]
       interval: 15s
       timeout: 5s
       retries: 5
-      start_period: 30s
+      start_period: 60s
 
-  # API Gateway – Point d'entrée unique, routing et validation JWT
+  # ─────────────────────────────────────────────────────────────
+  # API GATEWAY – Le seul service sur les DEUX réseaux
+  # Pont sécurisé entre frontend et microservices
+  # ─────────────────────────────────────────────────────────────
   api-gateway:
     build:
       context: ./services/api-gateway
@@ -271,6 +310,13 @@ services:
       EVENT_SERVICE_URL: ${EVENT_SERVICE_URL}
       TICKET_SERVICE_URL: ${TICKET_SERVICE_URL}
       CORS_ALLOWED_ORIGINS: ${CORS_ALLOWED_ORIGINS}
+    volumes:
+      # Monte le code source local dans le container
+      - ./services/api-gateway:/app
+      # Volume nommé pour node_modules/
+      - gateway_node_modules:/app/node_modules
+      # Volume nommé pour dist/ (build TypeScript)
+      - gateway_dist:/app/dist
     depends_on:
       auth-service:
         condition: service_healthy
@@ -281,15 +327,20 @@ services:
       ticket-service:
         condition: service_healthy
     networks:
-      - reservation_network
+      - frontend_network
+      - backend_network
     healthcheck:
       test: ["CMD-SHELL", "wget -qO- http://localhost:8000/health || exit 1"]
       interval: 15s
       timeout: 5s
       retries: 5
-      start_period: 30s
+      start_period: 60s
 
-  # NGINX – Load Balancer, seul port exposé sur l'hôte (80)
+  # ─────────────────────────────────────────────────────────────
+  # NGINX – Load Balancer
+  # Réseau : frontend_network uniquement
+  # Seul port exposé sur l'hôte (80)
+  # ─────────────────────────────────────────────────────────────
   nginx:
     build:
       context: ./nginx
@@ -297,13 +348,12 @@ services:
     container_name: reservation_nginx
     restart: unless-stopped
     ports:
-      # Seul port exposé vers l'extérieur – tout passe par ici
       - "80:80"
     depends_on:
       api-gateway:
         condition: service_healthy
     networks:
-      - reservation_network
+      - frontend_network
     healthcheck:
       test: ["CMD-SHELL", "wget -qO- http://localhost/health || exit 1"]
       interval: 10s
@@ -311,19 +361,85 @@ services:
       retries: 3
       start_period: 10s
 
+  # ─────────────────────────────────────────────────────────────
   # FRONTEND – React 18 + TypeScript
+  # Réseau : frontend_network uniquement
+  # ─────────────────────────────────────────────────────────────
   frontend:
     build:
       context: ./frontend
       dockerfile: Dockerfile
     container_name: reservation_frontend
     restart: unless-stopped
+    volumes:
+      # Monte le code source local dans le container
+      - ./frontend:/app
+      # Volume nommé pour node_modules/
+      - frontend_node_modules:/app/node_modules
+      # Volume nommé pour dist/ (build React)
+      - frontend_dist:/app/dist
     depends_on:
       - nginx
     networks:
-      - reservation_network
+      - frontend_network
 
-# RÉSEAU – Un seul réseau bridge partagé par tous les services
-# Les services se référencent par leur nom (ex: auth-service)
+# ─────────────────────────────────────────────────────────────
+# RÉSEAUX – Isolation sécurisée par couche
+# frontend_network : Nginx ↔ API Gateway ↔ Frontend
+# backend_network  : API Gateway ↔ Services ↔ BDD ↔ RabbitMQ
+# ─────────────────────────────────────────────────────────────
 networks:
-  reservation_network:
+  frontend_network:
+    name: reservation_frontend_network
+    driver: bridge
+  backend_network:
+    name: reservation_backend_network
+    driver: bridge
+
+# ─────────────────────────────────────────────────────────────
+# VOLUMES – Persistance des données et des dépendances
+# ─────────────────────────────────────────────────────────────
+volumes:
+  # Données PostgreSQL
+  auth_db_data:
+    name: reservation_auth_db_data
+  user_db_data:
+    name: reservation_user_db_data
+  event_db_data:
+    name: reservation_event_db_data
+  ticket_db_data:
+    name: reservation_ticket_db_data
+
+  # Données RabbitMQ
+  rabbitmq_data:
+    name: reservation_rabbitmq_data
+
+  # Dépendances Symfony (vendor/)
+  auth_vendor:
+    name: reservation_auth_vendor
+  user_vendor:
+    name: reservation_user_vendor
+  event_vendor:
+    name: reservation_event_vendor
+
+  # Clés JWT Auth Service
+  auth_jwt:
+    name: reservation_auth_jwt
+
+  # Dépendances Node.js (node_modules/ + dist/)
+  ticket_node_modules:
+    name: reservation_ticket_node_modules
+  ticket_dist:
+    name: reservation_ticket_dist
+  notification_node_modules:
+    name: reservation_notification_node_modules
+  notification_dist:
+    name: reservation_notification_dist
+  gateway_node_modules:
+    name: reservation_gateway_node_modules
+  gateway_dist:
+    name: reservation_gateway_dist
+  frontend_node_modules:
+    name: reservation_frontend_node_modules
+  frontend_dist:
+    name: reservation_frontend_dist
