@@ -1,15 +1,23 @@
 # Dockerfile – Auth Service (Symfony 7 / PHP 8.3)
-# Multi-stage build : on sépare la compilation du runtime
-# pour obtenir une image finale légère et sécurisée
+# Multi-stage build : builder pour les extensions PHP,
+# runtime pour l'image finale légère.
+#
+# IMPORTANT : Ce Dockerfile ne fait PAS composer install.
+# L'installation des dépendances est gérée par le script setup.sh
+# via : docker compose exec auth-service composer install
+# Cela permet à n'importe qui de cloner le repo et lancer ./setup.sh
+# sans avoir PHP ou Composer installés sur sa machine.
 
+# ─────────────────────────────────────────────────────────────
 # STAGE 1 : builder
-# Installe les dépendances et compile le projet
+# Compile les extensions PHP natives nécessaires
+# ─────────────────────────────────────────────────────────────
 FROM php:8.3-cli AS builder
 
-# Installation des extensions PHP nécessaires
-# pdo_pgsql : connexion PostgreSQL
-# intl      : internationalisation (requis par Symfony)
-# zip       : gestion des archives (requis par Composer)
+# Installation des headers de compilation et des extensions PHP
+# libpq-dev  : headers PostgreSQL pour compiler pdo_pgsql
+# libicu-dev : headers ICU pour compiler intl (requis par Symfony)
+# libzip-dev : headers zip pour compiler l'extension zip
 RUN apt-get update && apt-get install -y --no-install-recommends \
         libpq-dev \
         libicu-dev \
@@ -24,34 +32,20 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
 
-# Copier Composer depuis son image officielle
-COPY --from=composer:2 /usr/bin/composer /usr/bin/composer
-
-WORKDIR /app
-
-# Copier les manifestes en premier pour bénéficier du cache Docker
-# Si composer.json ne change pas, cette couche est réutilisée
-COPY composer.json composer.lock ./
-
-# Installer les dépendances sans les scripts (projet pas encore copié)
-RUN composer install --no-dev --no-scripts --no-autoloader --prefer-dist
-
-# Copier tout le code source
-COPY . .
-
-# Générer l'autoloader optimisé pour la production
-RUN composer dump-autoload --optimize --no-dev
-
+# ─────────────────────────────────────────────────────────────
 # STAGE 2 : runtime
-# Image finale légère avec uniquement ce qui est nécessaire
+# Image finale légère – uniquement les libs runtime
+# ─────────────────────────────────────────────────────────────
 FROM php:8.3-fpm-alpine AS runtime
 
-# Installation des libs runtime uniquement (pas les headers de compilation)
+# Installation des librairies runtime (sans headers de compilation)
+# .build-deps : groupe temporaire supprimé après installation des extensions
 RUN apk add --no-cache \
         libpq \
         icu-libs \
         libzip \
         wget \
+        bash \
     && apk add --no-cache --virtual .build-deps \
         libpq-dev \
         icu-dev \
@@ -63,20 +57,29 @@ RUN apk add --no-cache \
         zip \
     && apk del .build-deps
 
+# Copier Composer depuis son image officielle
+# Composer sera utilisé par setup.sh pour installer les dépendances
+COPY --from=composer:2 /usr/bin/composer /usr/bin/composer
+
 WORKDIR /app
 
-# Copier uniquement le résultat du builder (pas les outils de build)
-COPY --from=builder /app .
+# Copier tout le code source du service
+# vendor/ est dans .gitignore et sera créé par setup.sh
+COPY . .
 
-# Créer les dossiers Symfony avec les bonnes permissions
-RUN mkdir -p var/cache var/log \
-    && chmod -R 777 var/
+# Créer les dossiers nécessaires à Symfony avec les bonnes permissions
+# var/cache : cache du container DI, routes, etc.
+# var/log   : logs applicatifs Symfony
+# config/jwt : dossier pour les clés JWT (générées par setup.sh)
+RUN mkdir -p var/cache var/log config/jwt \
+    && chmod -R 777 var/ \
+    && chmod -R 700 config/jwt
 
-# Exposer le port interne du service
+# Exposer le port interne du Auth Service
 EXPOSE 8001
 
-# Healthcheck – vérifie que le service répond
-HEALTHCHECK --interval=15s --timeout=5s --start-period=30s --retries=5 \
+# Healthcheck – Docker vérifie que le service répond toutes les 15s
+HEALTHCHECK --interval=15s --timeout=5s --start-period=60s --retries=5 \
     CMD wget -qO- http://localhost:8001/health || exit 1
 
 # Copier et activer le script de démarrage
