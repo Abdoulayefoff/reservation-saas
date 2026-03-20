@@ -1,0 +1,329 @@
+# docker-compose.yml – Orchestration complète des services
+# Lancement : docker compose up --build
+
+services:
+
+  # BASES DE DONNÉES – 4 instances PostgreSQL isolées
+  # Chaque service a sa propre BDD, aucun partage entre services
+
+  # BDD du Auth Service – port hôte 5432
+  auth-db:
+    image: postgres:16-alpine
+    container_name: reservation_auth_db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${AUTH_DB_USER}
+      POSTGRES_PASSWORD: ${AUTH_DB_PASSWORD}
+      POSTGRES_DB: ${AUTH_DB_NAME}
+    volumes:
+      # Volume nommé pour persister les données entre redémarrages
+      - auth_db_data:/var/lib/postgresql/data
+    ports:
+      # Exposé sur l'hôte uniquement pour les outils externes (TablePlus, DBeaver)
+      - "5432:5432"
+    networks:
+      - reservation_network
+    healthcheck:
+      # pg_isready vérifie que PostgreSQL accepte les connexions
+      test: ["CMD-SHELL", "pg_isready -U ${AUTH_DB_USER} -d ${AUTH_DB_NAME}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+  # BDD du User Service – port hôte 5433
+  user-db:
+    image: postgres:16-alpine
+    container_name: reservation_user_db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${USER_DB_USER}
+      POSTGRES_PASSWORD: ${USER_DB_PASSWORD}
+      POSTGRES_DB: ${USER_DB_NAME}
+    volumes:
+      - user_db_data:/var/lib/postgresql/data
+    ports:
+      - "5433:5432"
+    networks:
+      - reservation_network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${USER_DB_USER} -d ${USER_DB_NAME}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+  # BDD du Event Service – port hôte 5434
+  event-db:
+    image: postgres:16-alpine
+    container_name: reservation_event_db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${EVENT_DB_USER}
+      POSTGRES_PASSWORD: ${EVENT_DB_PASSWORD}
+      POSTGRES_DB: ${EVENT_DB_NAME}
+    volumes:
+      - event_db_data:/var/lib/postgresql/data
+    ports:
+      - "5434:5432"
+    networks:
+      - reservation_network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${EVENT_DB_USER} -d ${EVENT_DB_NAME}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+  # BDD du Ticket Service – port hôte 5435
+  ticket-db:
+    image: postgres:16-alpine
+    container_name: reservation_ticket_db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${TICKET_DB_USER}
+      POSTGRES_PASSWORD: ${TICKET_DB_PASSWORD}
+      POSTGRES_DB: ${TICKET_DB_NAME}
+    volumes:
+      - ticket_db_data:/var/lib/postgresql/data
+    ports:
+      - "5435:5432"
+    networks:
+      - reservation_network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${TICKET_DB_USER} -d ${TICKET_DB_NAME}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+  # RABBITMQ – Broker de messages asynchrones
+  # Interface de management accessible sur http://localhost:15672
+  rabbitmq:
+    image: rabbitmq:3-management
+    container_name: reservation_rabbitmq
+    restart: unless-stopped
+    environment:
+      RABBITMQ_DEFAULT_USER: ${RABBITMQ_USER}
+      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASSWORD}
+      RABBITMQ_DEFAULT_VHOST: ${RABBITMQ_VHOST}
+    volumes:
+      # Persister les messages entre redémarrages
+      - rabbitmq_data:/var/lib/rabbitmq
+    ports:
+      - "5672:5672"    # Port AMQP pour les connexions des services
+      - "15672:15672"  # Port UI de management (navigateur)
+    networks:
+      - reservation_network
+    healthcheck:
+      # rabbitmq-diagnostics ping vérifie que le broker répond
+      test: ["CMD", "rabbitmq-diagnostics", "ping"]
+      interval: 15s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
+
+  # MICROSERVICES SYMFONY – Auth, User, Event
+  # depends_on avec service_healthy garantit que la BDD
+  # est prête avant que le service démarre
+
+  # Auth Service – Gestion JWT et authentification
+  auth-service:
+    build:
+      context: ./services/auth-service
+      dockerfile: Dockerfile
+    container_name: reservation_auth_service
+    restart: unless-stopped
+    environment:
+      APP_ENV: ${APP_ENV:-prod}
+      DATABASE_URL: ${AUTH_DATABASE_URL}
+      JWT_SECRET: ${JWT_SECRET}
+      JWT_TTL: ${JWT_TTL:-3600}
+      JWT_REFRESH_TTL: ${JWT_REFRESH_TTL:-604800}
+      USER_SERVICE_URL: ${USER_SERVICE_URL}
+    depends_on:
+      auth-db:
+        # Le service ne démarre que quand auth-db est healthy
+        condition: service_healthy
+    networks:
+      - reservation_network
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:8001/health || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+
+  # User Service – Gestion des profils utilisateurs
+  user-service:
+    build:
+      context: ./services/user-service
+      dockerfile: Dockerfile
+    container_name: reservation_user_service
+    restart: unless-stopped
+    environment:
+      APP_ENV: ${APP_ENV:-prod}
+      DATABASE_URL: ${USER_DATABASE_URL}
+      JWT_SECRET: ${JWT_SECRET}
+      TICKET_SERVICE_URL: ${TICKET_SERVICE_URL}
+    depends_on:
+      user-db:
+        condition: service_healthy
+    networks:
+      - reservation_network
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:8002/health || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+
+  # Event Service – Gestion des événements et des places
+  event-service:
+    build:
+      context: ./services/event-service
+      dockerfile: Dockerfile
+    container_name: reservation_event_service
+    restart: unless-stopped
+    environment:
+      APP_ENV: ${APP_ENV:-prod}
+      DATABASE_URL: ${EVENT_DATABASE_URL}
+      JWT_SECRET: ${JWT_SECRET}
+    depends_on:
+      event-db:
+        condition: service_healthy
+    networks:
+      - reservation_network
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:8003/health || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+
+  # MICROSERVICES NODE.JS – Ticket, Notification, API Gateway
+
+  # Ticket Service – Achat de billets et paiement CB simulé
+  ticket-service:
+    build:
+      context: ./services/ticket-service
+      dockerfile: Dockerfile
+    container_name: reservation_ticket_service
+    restart: unless-stopped
+    environment:
+      NODE_ENV: ${APP_ENV:-production}
+      PORT: ${TICKET_SERVICE_PORT:-8004}
+      DATABASE_URL: ${TICKET_DATABASE_URL}
+      JWT_SECRET: ${JWT_SECRET}
+      RABBITMQ_URL: ${RABBITMQ_URL}
+      EVENT_SERVICE_URL: ${EVENT_SERVICE_URL}
+    depends_on:
+      ticket-db:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+    networks:
+      - reservation_network
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:8004/health || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+
+  # Notification Service – Consumer RabbitMQ, simulation email/SMS
+  notification-service:
+    build:
+      context: ./services/notification-service
+      dockerfile: Dockerfile
+    container_name: reservation_notification_service
+    restart: unless-stopped
+    environment:
+      NODE_ENV: ${APP_ENV:-production}
+      PORT: ${NOTIFICATION_SERVICE_PORT:-8005}
+      RABBITMQ_URL: ${RABBITMQ_URL}
+    depends_on:
+      rabbitmq:
+        # Démarre uniquement quand RabbitMQ est prêt à recevoir des connexions
+        condition: service_healthy
+    networks:
+      - reservation_network
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:8005/health || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+
+  # API Gateway – Point d'entrée unique, routing et validation JWT
+  api-gateway:
+    build:
+      context: ./services/api-gateway
+      dockerfile: Dockerfile
+    container_name: reservation_api_gateway
+    restart: unless-stopped
+    environment:
+      NODE_ENV: ${APP_ENV:-production}
+      PORT: ${API_GATEWAY_PORT:-8000}
+      JWT_SECRET: ${JWT_SECRET}
+      AUTH_SERVICE_URL: ${AUTH_SERVICE_URL}
+      USER_SERVICE_URL: ${USER_SERVICE_URL}
+      EVENT_SERVICE_URL: ${EVENT_SERVICE_URL}
+      TICKET_SERVICE_URL: ${TICKET_SERVICE_URL}
+      CORS_ALLOWED_ORIGINS: ${CORS_ALLOWED_ORIGINS}
+    depends_on:
+      auth-service:
+        condition: service_healthy
+      user-service:
+        condition: service_healthy
+      event-service:
+        condition: service_healthy
+      ticket-service:
+        condition: service_healthy
+    networks:
+      - reservation_network
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:8000/health || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+
+  # NGINX – Load Balancer, seul port exposé sur l'hôte (80)
+  nginx:
+    build:
+      context: ./nginx
+      dockerfile: Dockerfile
+    container_name: reservation_nginx
+    restart: unless-stopped
+    ports:
+      # Seul port exposé vers l'extérieur – tout passe par ici
+      - "80:80"
+    depends_on:
+      api-gateway:
+        condition: service_healthy
+    networks:
+      - reservation_network
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost/health || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+
+  # FRONTEND – React 18 + TypeScript
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: reservation_frontend
+    restart: unless-stopped
+    depends_on:
+      - nginx
+    networks:
+      - reservation_network
+
+# RÉSEAU – Un seul réseau bridge partagé par tous les services
+# Les services se référencent par leur nom (ex: auth-service)
+networks:
+  reservation_network:
