@@ -1,10 +1,18 @@
 # docker-compose.yml – Orchestration complète des services
 # Lancement : docker compose up --build
+#
+# Architecture réseau sécurisée :
+#   frontend_network  → Nginx ↔ API Gateway uniquement
+#   backend_network   → API Gateway ↔ Microservices ↔ BDD ↔ RabbitMQ
+#
+# Le frontend (servi par Nginx) ne peut jamais atteindre
+# les microservices directement — tout passe par l'API Gateway.
 
 services:
 
   # BASES DE DONNÉES – 4 instances PostgreSQL isolées
   # Chaque service a sa propre BDD, aucun partage entre services
+  # Réseau : backend_network uniquement (invisible depuis Nginx)
 
   # BDD du Auth Service – port hôte 5432
   auth-db:
@@ -22,7 +30,7 @@ services:
       # Exposé sur l'hôte uniquement pour les outils externes (TablePlus, DBeaver)
       - "5432:5432"
     networks:
-      - reservation_network
+      - backend_network
     healthcheck:
       # pg_isready vérifie que PostgreSQL accepte les connexions
       test: ["CMD-SHELL", "pg_isready -U ${AUTH_DB_USER} -d ${AUTH_DB_NAME}"]
@@ -45,7 +53,7 @@ services:
     ports:
       - "5433:5432"
     networks:
-      - reservation_network
+      - backend_network
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${USER_DB_USER} -d ${USER_DB_NAME}"]
       interval: 10s
@@ -67,7 +75,7 @@ services:
     ports:
       - "5434:5432"
     networks:
-      - reservation_network
+      - backend_network
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${EVENT_DB_USER} -d ${EVENT_DB_NAME}"]
       interval: 10s
@@ -89,7 +97,7 @@ services:
     ports:
       - "5435:5432"
     networks:
-      - reservation_network
+      - backend_network
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${TICKET_DB_USER} -d ${TICKET_DB_NAME}"]
       interval: 10s
@@ -98,6 +106,7 @@ services:
       start_period: 10s
 
   # RABBITMQ – Broker de messages asynchrones
+  # Réseau : backend_network uniquement
   # Interface de management accessible sur http://localhost:15672
   rabbitmq:
     image: rabbitmq:3-management
@@ -114,7 +123,7 @@ services:
       - "5672:5672"    # Port AMQP pour les connexions des services
       - "15672:15672"  # Port UI de management (navigateur)
     networks:
-      - reservation_network
+      - backend_network
     healthcheck:
       # rabbitmq-diagnostics ping vérifie que le broker répond
       test: ["CMD", "rabbitmq-diagnostics", "ping"]
@@ -124,8 +133,8 @@ services:
       start_period: 30s
 
   # MICROSERVICES SYMFONY – Auth, User, Event
-  # depends_on avec service_healthy garantit que la BDD
-  # est prête avant que le service démarre
+  # Réseau : backend_network uniquement
+  # Invisibles depuis Nginx et le frontend
 
   # Auth Service – Gestion JWT et authentification
   auth-service:
@@ -143,10 +152,9 @@ services:
       USER_SERVICE_URL: ${USER_SERVICE_URL}
     depends_on:
       auth-db:
-        # Le service ne démarre que quand auth-db est healthy
         condition: service_healthy
     networks:
-      - reservation_network
+      - backend_network
     healthcheck:
       test: ["CMD-SHELL", "wget -qO- http://localhost:8001/health || exit 1"]
       interval: 15s
@@ -170,7 +178,7 @@ services:
       user-db:
         condition: service_healthy
     networks:
-      - reservation_network
+      - backend_network
     healthcheck:
       test: ["CMD-SHELL", "wget -qO- http://localhost:8002/health || exit 1"]
       interval: 15s
@@ -193,7 +201,7 @@ services:
       event-db:
         condition: service_healthy
     networks:
-      - reservation_network
+      - backend_network
     healthcheck:
       test: ["CMD-SHELL", "wget -qO- http://localhost:8003/health || exit 1"]
       interval: 15s
@@ -201,7 +209,8 @@ services:
       retries: 5
       start_period: 30s
 
-  # MICROSERVICES NODE.JS – Ticket, Notification, API Gateway
+  # MICROSERVICES NODE.JS – Ticket, Notification
+  # Réseau : backend_network uniquement
 
   # Ticket Service – Achat de billets et paiement CB simulé
   ticket-service:
@@ -223,7 +232,7 @@ services:
       rabbitmq:
         condition: service_healthy
     networks:
-      - reservation_network
+      - backend_network
     healthcheck:
       test: ["CMD-SHELL", "wget -qO- http://localhost:8004/health || exit 1"]
       interval: 15s
@@ -244,10 +253,9 @@ services:
       RABBITMQ_URL: ${RABBITMQ_URL}
     depends_on:
       rabbitmq:
-        # Démarre uniquement quand RabbitMQ est prêt à recevoir des connexions
         condition: service_healthy
     networks:
-      - reservation_network
+      - backend_network
     healthcheck:
       test: ["CMD-SHELL", "wget -qO- http://localhost:8005/health || exit 1"]
       interval: 15s
@@ -255,7 +263,10 @@ services:
       retries: 5
       start_period: 30s
 
-  # API Gateway – Point d'entrée unique, routing et validation JWT
+  # API GATEWAY – Le seul service sur les DEUX réseaux
+  # C'est le pont sécurisé entre le frontend et les microservices.
+  # - frontend_network : reçoit les requêtes de Nginx
+  # - backend_network  : transfère vers les microservices
   api-gateway:
     build:
       context: ./services/api-gateway
@@ -281,7 +292,8 @@ services:
       ticket-service:
         condition: service_healthy
     networks:
-      - reservation_network
+      - frontend_network  # Reçoit les requêtes de Nginx
+      - backend_network   # Accède aux microservices
     healthcheck:
       test: ["CMD-SHELL", "wget -qO- http://localhost:8000/health || exit 1"]
       interval: 15s
@@ -289,7 +301,10 @@ services:
       retries: 5
       start_period: 30s
 
-  # NGINX – Load Balancer, seul port exposé sur l'hôte (80)
+  # NGINX – Load Balancer + serveur de fichiers statiques frontend
+  # Réseau : frontend_network uniquement
+  # Seul port exposé sur l'hôte (80)
+  # Ne voit que l'API Gateway, jamais les microservices
   nginx:
     build:
       context: ./nginx
@@ -297,13 +312,13 @@ services:
     container_name: reservation_nginx
     restart: unless-stopped
     ports:
-      # Seul port exposé vers l'extérieur – tout passe par ici
+      # Seul point d'entrée exposé vers l'extérieur
       - "80:80"
     depends_on:
       api-gateway:
         condition: service_healthy
     networks:
-      - reservation_network
+      - frontend_network  # Voit uniquement l'API Gateway
     healthcheck:
       test: ["CMD-SHELL", "wget -qO- http://localhost/health || exit 1"]
       interval: 10s
@@ -312,6 +327,9 @@ services:
       start_period: 10s
 
   # FRONTEND – React 18 + TypeScript
+  # Réseau : frontend_network uniquement
+  # Communique UNIQUEMENT avec Nginx, jamais directement
+  # avec les microservices ou les BDD
   frontend:
     build:
       context: ./frontend
@@ -321,9 +339,32 @@ services:
     depends_on:
       - nginx
     networks:
-      - reservation_network
+      - frontend_network  # Réseau limité : ne voit que Nginx et Gateway
 
-# RÉSEAU – Un seul réseau bridge partagé par tous les services
-# Les services se référencent par leur nom (ex: auth-service)
+# RÉSEAUX – Isolation sécurisée par couche
+#
+#   frontend_network : Nginx ↔ API Gateway ↔ Frontend
+#   backend_network  : API Gateway ↔ Services ↔ BDD ↔ RabbitMQ
+#
+# Aucun service backend n'est joignable depuis frontend_network
+# sauf l'API Gateway qui fait le pont entre les deux.
 networks:
-  reservation_network:
+  frontend_network:
+    name: reservation_frontend_network
+    driver: bridge
+  backend_network:
+    name: reservation_backend_network
+    driver: bridge
+
+# VOLUMES – Persistance des données entre redémarrages
+volumes:
+  auth_db_data:
+    name: reservation_auth_db_data
+  user_db_data:
+    name: reservation_user_db_data
+  event_db_data:
+    name: reservation_event_db_data
+  ticket_db_data:
+    name: reservation_ticket_db_data
+  rabbitmq_data:
+    name: reservation_rabbitmq_data
