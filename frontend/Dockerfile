@@ -6,10 +6,8 @@
 # L'installation des dépendances est gérée par le script setup.sh
 # via : docker compose exec frontend npm install && npm run build
 
-# ─────────────────────────────────────────────────────────────
 # STAGE 1 : builder
 # Copie le code source pour le runtime
-# ─────────────────────────────────────────────────────────────
 FROM node:20-alpine AS builder
 
 # Installation des outils nécessaires au build
@@ -20,11 +18,9 @@ WORKDIR /app
 # Copier tout le code source
 COPY . .
 
-# ─────────────────────────────────────────────────────────────
 # STAGE 2 : runtime
 # Nginx Alpine pour servir les fichiers statiques React
 # Le build React (dist/) sera généré par setup.sh
-# ─────────────────────────────────────────────────────────────
 FROM nginx:alpine AS runtime
 
 # Installation des outils nécessaires au runtime

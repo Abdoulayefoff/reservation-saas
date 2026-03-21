@@ -6,10 +6,8 @@
 # L'installation des dépendances est gérée par le script setup.sh
 # via : docker compose exec notification-service npm install
 
-# ─────────────────────────────────────────────────────────────
 # STAGE 1 : builder
 # Copie le code source pour le runtime
-# ─────────────────────────────────────────────────────────────
 FROM node:20-alpine AS builder
 
 WORKDIR /app
@@ -17,10 +15,8 @@ WORKDIR /app
 # Copier tout le code source
 COPY . .
 
-# ─────────────────────────────────────────────────────────────
 # STAGE 2 : runtime
 # Image finale légère – Node.js Alpine
-# ─────────────────────────────────────────────────────────────
 FROM node:20-alpine AS runtime
 
 # Installation des outils nécessaires au runtime

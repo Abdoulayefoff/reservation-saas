@@ -10,10 +10,8 @@
 
 services:
 
-  # ─────────────────────────────────────────────────────────────
   # BASES DE DONNÉES – 4 instances PostgreSQL isolées
   # Réseau : backend_network uniquement
-  # ─────────────────────────────────────────────────────────────
 
   auth-db:
     image: postgres:16-alpine
@@ -99,10 +97,8 @@ services:
       retries: 5
       start_period: 10s
 
-  # ─────────────────────────────────────────────────────────────
   # RABBITMQ – Broker de messages asynchrones
   # Réseau : backend_network uniquement
-  # ─────────────────────────────────────────────────────────────
   rabbitmq:
     image: rabbitmq:3-management
     container_name: reservation_rabbitmq
@@ -125,12 +121,10 @@ services:
       retries: 5
       start_period: 30s
 
-  # ─────────────────────────────────────────────────────────────
   # MICROSERVICES SYMFONY – Auth, User, Event
   # Volumes : code source monté depuis l'hôte
   # vendor/ persisté dans un volume nommé (installé par setup.sh)
   # Réseau : backend_network uniquement
-  # ─────────────────────────────────────────────────────────────
 
   auth-service:
     build:
@@ -139,9 +133,10 @@ services:
     container_name: reservation_auth_service
     restart: unless-stopped
     environment:
-      APP_ENV: ${APP_ENV:-prod}
+      APP_ENV: ${APP_ENV:-dev}
       DATABASE_URL: ${AUTH_DATABASE_URL}
       JWT_SECRET: ${JWT_SECRET}
+      JWT_PASSPHRASE: ${JWT_PASSPHRASE}
       JWT_TTL: ${JWT_TTL:-3600}
       JWT_REFRESH_TTL: ${JWT_REFRESH_TTL:-604800}
       USER_SERVICE_URL: ${USER_SERVICE_URL}
@@ -173,7 +168,7 @@ services:
     container_name: reservation_user_service
     restart: unless-stopped
     environment:
-      APP_ENV: ${APP_ENV:-prod}
+      APP_ENV: ${APP_ENV:-dev}
       DATABASE_URL: ${USER_DATABASE_URL}
       JWT_SECRET: ${JWT_SECRET}
       TICKET_SERVICE_URL: ${TICKET_SERVICE_URL}
@@ -201,7 +196,7 @@ services:
     container_name: reservation_event_service
     restart: unless-stopped
     environment:
-      APP_ENV: ${APP_ENV:-prod}
+      APP_ENV: ${APP_ENV:-dev}
       DATABASE_URL: ${EVENT_DATABASE_URL}
       JWT_SECRET: ${JWT_SECRET}
     volumes:
@@ -221,12 +216,10 @@ services:
       retries: 5
       start_period: 60s
 
-  # ─────────────────────────────────────────────────────────────
   # MICROSERVICES NODE.JS – Ticket, Notification
   # Volumes : code source monté depuis l'hôte
   # node_modules/ et dist/ persistés dans des volumes nommés
   # Réseau : backend_network uniquement
-  # ─────────────────────────────────────────────────────────────
 
   ticket-service:
     build:
@@ -235,7 +228,7 @@ services:
     container_name: reservation_ticket_service
     restart: unless-stopped
     environment:
-      NODE_ENV: ${APP_ENV:-production}
+      NODE_ENV: ${NODE_ENV:-development}
       PORT: ${TICKET_SERVICE_PORT:-8004}
       DATABASE_URL: ${TICKET_DATABASE_URL}
       JWT_SECRET: ${JWT_SECRET}
@@ -269,7 +262,7 @@ services:
     container_name: reservation_notification_service
     restart: unless-stopped
     environment:
-      NODE_ENV: ${APP_ENV:-production}
+      NODE_ENV: ${NODE_ENV:-development}
       PORT: ${NOTIFICATION_SERVICE_PORT:-8005}
       RABBITMQ_URL: ${RABBITMQ_URL}
     volumes:
@@ -291,10 +284,8 @@ services:
       retries: 5
       start_period: 60s
 
-  # ─────────────────────────────────────────────────────────────
   # API GATEWAY – Le seul service sur les DEUX réseaux
   # Pont sécurisé entre frontend et microservices
-  # ─────────────────────────────────────────────────────────────
   api-gateway:
     build:
       context: ./services/api-gateway
@@ -302,7 +293,7 @@ services:
     container_name: reservation_api_gateway
     restart: unless-stopped
     environment:
-      NODE_ENV: ${APP_ENV:-production}
+      NODE_ENV: ${NODE_ENV:-development}
       PORT: ${API_GATEWAY_PORT:-8000}
       JWT_SECRET: ${JWT_SECRET}
       AUTH_SERVICE_URL: ${AUTH_SERVICE_URL}
@@ -336,11 +327,9 @@ services:
       retries: 5
       start_period: 60s
 
-  # ─────────────────────────────────────────────────────────────
   # NGINX – Load Balancer
   # Réseau : frontend_network uniquement
   # Seul port exposé sur l'hôte (80)
-  # ─────────────────────────────────────────────────────────────
   nginx:
     build:
       context: ./nginx
@@ -361,10 +350,8 @@ services:
       retries: 3
       start_period: 10s
 
-  # ─────────────────────────────────────────────────────────────
   # FRONTEND – React 18 + TypeScript
   # Réseau : frontend_network uniquement
-  # ─────────────────────────────────────────────────────────────
   frontend:
     build:
       context: ./frontend
@@ -383,11 +370,9 @@ services:
     networks:
       - frontend_network
 
-# ─────────────────────────────────────────────────────────────
 # RÉSEAUX – Isolation sécurisée par couche
 # frontend_network : Nginx ↔ API Gateway ↔ Frontend
 # backend_network  : API Gateway ↔ Services ↔ BDD ↔ RabbitMQ
-# ─────────────────────────────────────────────────────────────
 networks:
   frontend_network:
     name: reservation_frontend_network
@@ -396,9 +381,7 @@ networks:
     name: reservation_backend_network
     driver: bridge
 
-# ─────────────────────────────────────────────────────────────
 # VOLUMES – Persistance des données et des dépendances
-# ─────────────────────────────────────────────────────────────
 volumes:
   # Données PostgreSQL
   auth_db_data:

@@ -1,0 +1,56 @@
+# doctrine.yaml – Configuration Doctrine ORM pour User Service
+# Base de données PostgreSQL 16 isolée (user_db)
+
+doctrine:
+    dbal:
+        url: '%env(resolve:DATABASE_URL)%'
+        # Version PostgreSQL utilisée dans les containers Docker
+        server_version: '16'
+        # Encodage des connexions
+        charset: utf8
+        profiling_collect_backtrace: '%kernel.debug%'
+
+    orm:
+        # Valider le mapping XML au boot
+        validate_xml_mapping: true
+        # Stratégie de nommage : camelCase PHP → snake_case SQL
+        naming_strategy: doctrine.orm.naming_strategy.underscore_number_aware
+        # Préférer les séquences PostgreSQL pour la génération d'ID
+        identity_generation_preferences:
+            Doctrine\DBAL\Platforms\PostgreSQLPlatform: identity
+        # Auto-mapping des entités dans src/Entity/
+        auto_mapping: true
+        mappings:
+            App:
+                type: attribute
+                is_bundle: false
+                dir: '%kernel.project_dir%/src/Entity'
+                prefix: 'App\Entity'
+                alias: App
+        controller_resolver:
+            auto_mapping: false
+
+# Configuration spécifique pour les tests
+when@test:
+    doctrine:
+        dbal:
+            dbname_suffix: '_test%env(default::TEST_TOKEN)%'
+
+# Configuration spécifique pour la production
+when@prod:
+    doctrine:
+        orm:
+            query_cache_driver:
+                type: pool
+                pool: doctrine.system_cache_pool
+            result_cache_driver:
+                type: pool
+                pool: doctrine.result_cache_pool
+
+    framework:
+        cache:
+            pools:
+                doctrine.result_cache_pool:
+                    adapter: cache.app
+                doctrine.system_cache_pool:
+                    adapter: cache.system

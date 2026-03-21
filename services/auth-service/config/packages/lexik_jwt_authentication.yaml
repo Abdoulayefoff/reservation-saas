@@ -1,0 +1,14 @@
+# lexik_jwt_authentication.yaml – Configuration JWT pour Auth Service
+# Gère la génération et la validation des tokens JWT
+
+lexik_jwt_authentication:
+    # Clé privée pour signer les tokens (RSA)
+    secret_key: '%env(resolve:JWT_SECRET_KEY)%'
+    # Clé publique pour valider les tokens
+    public_key: '%env(resolve:JWT_PUBLIC_KEY)%'
+    # Passphrase de la clé privée
+    pass_phrase: '%env(JWT_PASSPHRASE)%'
+    # Durée de vie du token en secondes (1h par défaut)
+    token_ttl: '%env(int:JWT_TTL)%'
+    # Champ utilisé comme identifiant dans le payload JWT
+    user_identity_field: email

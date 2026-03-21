@@ -4,29 +4,21 @@
 # set -e : arrête le script à la première erreur
 set -e
 
-# ─────────────────────────────────────────────────────────────
-# Vérification que les dépendances sont installées
-# Si node_modules/ n'existe pas, le service ne peut pas démarrer
-# ─────────────────────────────────────────────────────────────
+# Installation automatique des dépendances si node_modules/ est absent
 if [ ! -d "node_modules" ]; then
-    echo "❌ Le dossier node_modules/ est absent."
-    echo "👉 Lancez d'abord : ./setup.sh"
-    exit 1
+    echo "Installation des dépendances npm..."
+    npm install
+    echo "Dépendances installées"
 fi
 
-# ─────────────────────────────────────────────────────────────
-# Vérification que le build TypeScript existe
-# dist/ est généré par setup.sh via npm run build
-# ─────────────────────────────────────────────────────────────
+# Build TypeScript automatique si dist/ est absent ou vide
 if [ ! -f "dist/consumer.js" ]; then
-    echo "❌ Le build TypeScript est absent (dist/consumer.js introuvable)."
-    echo "👉 Lancez d'abord : ./setup.sh"
-    exit 1
+    echo "Build TypeScript..."
+    npm run build
+    echo "Build terminé"
 fi
 
-# ─────────────────────────────────────────────────────────────
 # Démarrage du consumer RabbitMQ
 # Ce service n'a pas de BDD, pas de migrations à appliquer
-# ─────────────────────────────────────────────────────────────
-echo "🚀 Démarrage du Notification Service sur le port 8005..."
+echo "Démarrage du Notification Service sur le port 8005..."
 exec node dist/consumer.js

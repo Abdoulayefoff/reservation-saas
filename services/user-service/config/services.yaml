@@ -1,0 +1,19 @@
+# services.yaml – Configuration des services User Service
+# Autowiring et autoconfiguration activés par défaut
+
+parameters:
+    # URL du Ticket Service pour récupérer les billets d'un utilisateur
+    app.ticket_service_url: '%env(TICKET_SERVICE_URL)%'
+
+services:
+    # Configuration par défaut pour tous les services
+    _defaults:
+        autowire: true
+        autoconfigure: true
+        bind:
+            # Injection du paramètre dans les services qui en ont besoin
+            string $ticketServiceUrl: '%app.ticket_service_url%'
+
+    # Auto-registration de toutes les classes dans src/
+    App\:
+        resource: '../src/'

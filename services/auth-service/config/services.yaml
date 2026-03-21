@@ -1,0 +1,22 @@
+# services.yaml – Configuration des services Auth Service
+# Autowiring et autoconfiguration activés par défaut
+
+parameters:
+    # TTL du refresh token en secondes (7 jours par défaut)
+    app.jwt_refresh_ttl: '%env(int:JWT_REFRESH_TTL)%'
+    # URL du User Service pour la synchronisation des profils
+    app.user_service_url: '%env(USER_SERVICE_URL)%'
+
+services:
+    # Configuration par défaut pour tous les services
+    _defaults:
+        autowire: true
+        autoconfigure: true
+        bind:
+            # Injection des paramètres dans les services qui en ont besoin
+            string $userServiceUrl: '%app.user_service_url%'
+            int $jwtRefreshTtl: '%app.jwt_refresh_ttl%'
+
+    # Auto-registration de toutes les classes dans src/
+    App\:
+        resource: '../src/'
