@@ -4,15 +4,13 @@
 # set -e : arrête le script à la première erreur
 set -e
 
-# Installation automatique des dépendances si node_modules/ est absent
-if [ ! -d "node_modules" ]; then
-    echo "Installation des dépendances npm..."
-    npm install
-    echo "Dépendances installées"
-fi
+# Synchronisation des dépendances npm (détecte les nouvelles depuis le dernier build)
+echo "Synchronisation des dépendances npm..."
+npm install --prefer-offline
+echo "Dépendances OK"
 
-# Build TypeScript automatique si dist/ est absent ou vide
-if [ ! -f "dist/app.js" ]; then
+# Build TypeScript automatique si dist/ est absent ou si les sources sont plus récentes
+if [ ! -f "dist/server.js" ] || [ "$(find src -name '*.ts' -newer dist/server.js 2>/dev/null | head -1)" != "" ]; then
     echo "Build TypeScript..."
     npm run build
     echo "Build terminé"
@@ -22,7 +20,7 @@ fi
 echo "Attente de la base de données..."
 MAX_RETRIES=30
 RETRY_COUNT=0
-until npx prisma migrate deploy 2>/dev/null; do
+until npx prisma db push --force-reset 2>/dev/null; do
     RETRY_COUNT=$((RETRY_COUNT + 1))
     if [ $RETRY_COUNT -ge $MAX_RETRIES ]; then
         echo "La base de données n'est pas accessible après ${MAX_RETRIES} tentatives"
@@ -35,4 +33,4 @@ echo "Migrations Prisma appliquées"
 
 # Démarrage du service Node.js compilé
 echo "Démarrage du Ticket Service sur le port 8004..."
-exec node dist/app.js
+exec node dist/server.js

@@ -22,7 +22,7 @@ FROM node:20-alpine AS runtime
 # Installation des outils nécessaires au runtime
 # wget : utilisé par le healthcheck Docker
 # bash : utilisé par le docker-entrypoint.sh
-RUN apk add --no-cache wget bash
+RUN apk add --no-cache wget bash openssl openssl-dev
 
 WORKDIR /app
 
