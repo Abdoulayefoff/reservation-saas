@@ -11,4 +11,4 @@ lexik_jwt_authentication:
     # Durée de vie du token en secondes (1h par défaut)
     token_ttl: '%env(int:JWT_TTL)%'
     # Champ utilisé comme identifiant dans le payload JWT
-    user_identity_field: email
+    user_id_claim: email

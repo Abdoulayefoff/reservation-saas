@@ -1,9 +1,7 @@
 <?php
 
 declare(strict_types=1);
-
 namespace App\Tests\Service;
-
 use App\Entity\Profile;
 use App\Repository\ProfileRepository;
 use App\Service\UserService;
@@ -14,7 +12,6 @@ use Symfony\Contracts\HttpClient\HttpClientInterface;
 
 /**
  * Tests unitaires pour UserService.
- *
  * Utilise des mocks pour isoler le service de ses dépendances.
  */
 class UserServiceTest extends TestCase
