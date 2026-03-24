@@ -5,7 +5,7 @@
 set -e
 
 # Installation automatique des dépendances si node_modules/ est absent
-if [ ! -d "node_modules" ]; then
+if [ ! -d "node_modules/.bin" ]; then
     echo "Installation des dépendances npm..."
     npm install
     echo "Dépendances installées"
