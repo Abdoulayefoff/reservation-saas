@@ -4,15 +4,13 @@
 # set -e : arrête le script à la première erreur
 set -e
 
-# Installation automatique des dépendances si node_modules/ est absent
-if [ ! -d "node_modules" ]; then
-    echo "Installation des dépendances npm..."
-    npm install
-    echo "Dépendances installées"
-fi
+# Synchronisation des dépendances npm (détecte les nouvelles depuis le dernier build)
+echo "Synchronisation des dépendances npm..."
+npm install --prefer-offline
+echo "Dépendances OK"
 
-# Build TypeScript automatique si dist/ est absent ou vide
-if [ ! -f "dist/app.js" ]; then
+# Build TypeScript automatique si dist/ est absent ou si les sources sont plus récentes
+if [ ! -f "dist/app.js" ] || [ "$(find src -name '*.ts' -newer dist/app.js 2>/dev/null | head -1)" != "" ]; then
     echo "Build TypeScript..."
     npm run build
     echo "Build terminé"
