@@ -162,6 +162,19 @@ app.use(
   })
 );
 
+// PARTIE 2b : Route EVENTS/MINE (authentifiée — tous statuts du créateur)
+// Doit être déclarée AVANT le handler général /api/events pour prendre priorité.
+// Réutilise makeProxy pour ne pas créer de nouvelles fonctions non couvertes.
+app.get(
+  '/api/events/mine',
+  authenticate,
+  (req: Request, _res: Response, next: NextFunction) => {
+    req.url = '/'; // makeProxy rebuilds: /events/mine + '' = /events/mine
+    next();
+  },
+  makeProxy(EVENT_URL, '', 'events/mine')
+);
+
 // PARTIE 2 : Routes EVENTS (GET public, reste protégé)
 // /api/events/* → event-service:8003/events/*
 //

@@ -6,7 +6,7 @@
   "scripts": {
     "start": "node dist/server.js",
     "dev": "ts-node-dev --respawn --transpile-only src/server.ts",
-    "build": "npx prisma generate && tsc && cp src/swagger.yaml dist/",
+    "build": "npx prisma generate && tsc -p tsconfig.build.json && cp src/swagger.yaml dist/",
     "test": "jest",
     "lint": "eslint src/**/*.ts"
   },

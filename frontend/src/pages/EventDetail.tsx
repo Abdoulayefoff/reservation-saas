@@ -2,8 +2,16 @@ import { useEffect, useState } from 'react';
 import { useParams, Link, useNavigate } from 'react-router-dom';
 import api from '../api/axios';
 import { useAuth } from '../context/AuthContext';
-import { Calendar, MapPin, Users, ArrowLeft, Loader2, X, CheckCircle } from 'lucide-react'; 
-import type { EventType } from './Home'; 
+import { Calendar, MapPin, Users, ArrowLeft, Loader2, X, CheckCircle } from 'lucide-react';
+import type { EventType } from './Home';
+
+interface TicketOption {
+  id: string;
+  type: string;
+  price: string;
+  quantity: number;
+  available: number;
+}
 
 export default function EventDetail() { // Définition de la page de Détail
   const { id } = useParams<{ id: string }>(); // Récupère l'ID depuis l'URL /events/:id
@@ -24,6 +32,11 @@ export default function EventDetail() { // Définition de la page de Détail
   const [cardNumber, setCardNumber] = useState('');
   const [cardExpiry, setCardExpiry] = useState('');
   const [cardCvv, setCardCvv] = useState('');
+
+  // TicketOptions
+  const [ticketOptions, setTicketOptions] = useState<TicketOption[]>([]);
+  const [selectedOptionId, setSelectedOptionId] = useState('');
+  const [loadingOptions, setLoadingOptions] = useState(false);
 
   /**
    * Effet de chargement de l'évènement cible.
@@ -50,8 +63,22 @@ export default function EventDetail() { // Définition de la page de Détail
     setCardNumber('');
     setCardExpiry('');
     setCardCvv('');
-    setShowModal(true); // Ouvre vue
-  }; 
+    setTicketOptions([]);
+    setSelectedOptionId('');
+    setShowModal(true);
+
+    // Charge les catégories de billets
+    if (!id) return;
+    setLoadingOptions(true);
+    api.get(`/events/${id}/ticket-options`)
+      .then((res) => {
+        const opts: TicketOption[] = res.data.ticketOptions || res.data || [];
+        setTicketOptions(opts);
+        if (opts.length > 0) setSelectedOptionId(opts[0].id);
+      })
+      .catch(() => {})
+      .finally(() => setLoadingOptions(false));
+  };
 
   /**
    * Soumission du Paiement (Simulation).
@@ -75,7 +102,12 @@ export default function EventDetail() { // Définition de la page de Détail
     
     try {
       // 1. Appel d'achat
-      await api.post('/tickets/buy', { eventId: id, quantity: 1, cardNumber });
+      await api.post('/tickets/buy', {
+        eventId: id,
+        quantity: 1,
+        cardNumber,
+        ...(selectedOptionId ? { ticketOptionId: selectedOptionId } : {}),
+      });
       setBuySuccess(true); // Bascule Vue Succès
       
       // 2. Re-charge l'évènement pour actualiser 'availableSeats' instantanément
@@ -319,9 +351,38 @@ export default function EventDetail() { // Définition de la page de Détail
                   </div>
                   <div className="border-t border-dashed border-noir-650 pt-2.5 flex justify-between items-center">
                     <span className="text-sm font-semibold text-noir-200">Total</span>
-                    <span className="font-mono font-bold text-xl text-sol">{event.price} €</span>
+                    <span className="font-mono font-bold text-xl text-sol">
+                      {selectedOptionId
+                        ? (parseFloat(ticketOptions.find(o => o.id === selectedOptionId)?.price ?? String(event.price)) || event.price).toFixed(0)
+                        : event.price
+                      } €
+                    </span>
                   </div>
                 </div>
+
+                {/* Sélecteur catégorie de billet */}
+                {loadingOptions && (
+                  <div className="flex items-center gap-2 text-xs text-noir-400 font-mono mb-4">
+                    <Loader2 className="w-3 h-3 animate-spin" /> Chargement des catégories...
+                  </div>
+                )}
+                {!loadingOptions && ticketOptions.length > 0 && (
+                  <div className="mb-4">
+                    <label className="label-dim block mb-1.5">Catégorie de billet</label>
+                    <select
+                      value={selectedOptionId}
+                      onChange={(e) => setSelectedOptionId(e.target.value)}
+                      disabled={buying}
+                      className="input-dark w-full"
+                    >
+                      {ticketOptions.map((opt) => (
+                        <option key={opt.id} value={opt.id}>
+                          {opt.type} — {parseFloat(opt.price).toFixed(0)} € ({opt.available} restant{opt.available > 1 ? 's' : ''})
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                )}
 
                 {/* Coordonnées */}
                 <div className="space-y-3 mb-5">

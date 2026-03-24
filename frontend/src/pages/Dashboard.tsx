@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import api from '../api/axios';
 import { useAuth } from '../context/AuthContext';
-import { Loader2, Plus, Calendar, Users, Ticket, X, TrendingUp } from 'lucide-react'; 
+import { Loader2, Plus, Calendar, Users, Ticket, X, TrendingUp, Edit2, Trash2 } from 'lucide-react';
 import type { EventType } from './Home'; 
 import Toast from '../components/Toast';
 import { useToast } from '../hooks/useToast';
@@ -29,6 +29,8 @@ interface AdminUser {
 
 type Tab = 'events' | 'users' | 'tickets'; // Types d'onglets possibles
 
+interface TicketCategory { type: string; price: number; quantity: number; }
+
 /**
  * Sous-composant local pour les badges de statut génériques (évènement/billet).
  */
@@ -54,16 +56,29 @@ export default function Dashboard() {
   const { toast, showToast, hideToast } = useToast(); // Hook alertes
   
   // Structures pour nouveau formulaire
-  const [newEvent, setNewEvent] = useState({ title: '', description: '', date: '', venue: '' });
+  const [newEvent, setNewEvent] = useState({ title: '', description: '', date: '', venue: '', status: 'PUBLISHED' });
   const [pricesAndPlaces, setPricesAndPlaces] = useState({ price: 50, totalSeats: 100 });
+  const [ticketCategories, setTicketCategories] = useState<TicketCategory[]>([
+    { type: 'STANDARD', price: 50, quantity: 100 },
+  ]);
   const [isSubmitting, setIsSubmitting] = useState(false); // Spinner de soumission
+
+  // Filtre de statut pour l'onglet événements
+  const [statusFilter, setStatusFilter] = useState<'ALL' | 'PUBLISHED' | 'DRAFT' | 'CANCELLED'>('ALL');
+
+  // États pour l'édition d'un événement
+  const [showEditModal, setShowEditModal] = useState(false);
+  const [editingEvent, setEditingEvent] = useState<EventType | null>(null);
+  const [editForm, setEditForm] = useState({ title: '', description: '', date: '', venue: '', price: 0, totalSeats: 0, status: 'PUBLISHED' });
+  const [isEditSubmitting, setIsEditSubmitting] = useState(false);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
 
   /**
    * Charge les évènements créés par l'organisateur/admin.
    */
   const fetchMyCreatedEvents = async () => {
     try {
-      const response = await api.get('/events'); // Appel Gateway
+      const response = await api.get('/events/mine'); // Endpoint authentifié — tous statuts
       setEvents(response.data.data || response.data || []);
     } catch {
       showToast('Erreur lors du chargement des événements.', 'error');
@@ -119,8 +134,9 @@ export default function Dashboard() {
    * Remet le formulaire de création à zéro.
    */
   const resetNewEventForm = () => {
-    setNewEvent({ title: '', description: '', date: '', venue: '' });
+    setNewEvent({ title: '', description: '', date: '', venue: '', status: 'PUBLISHED' });
     setPricesAndPlaces({ price: 50, totalSeats: 100 });
+    setTicketCategories([{ type: 'STANDARD', price: 50, quantity: 100 }]);
   };
 
   /**
@@ -140,15 +156,20 @@ export default function Dashboard() {
         venue: newEvent.venue,
         price: pricesAndPlaces.price,
         totalSeats: pricesAndPlaces.totalSeats,
-        status: 'PUBLISHED',
+        status: newEvent.status,
       });
       
-      // 2. Appel Configuration Billetterie (Indispensable pour le flux d'options)
-      await api.post(`/events/${response.data.id}/ticket-options`, {
-        type: 'STANDARD',
-        price: pricesAndPlaces.price,
-        quantity: pricesAndPlaces.totalSeats,
-      });
+      // 2. Création des catégories de billets définies par l'organisateur
+      const eventId = response.data.id;
+      for (const cat of ticketCategories) {
+        if (cat.type && cat.quantity > 0) {
+          await api.post(`/events/${eventId}/ticket-options`, {
+            type: cat.type,
+            price: cat.price,
+            quantity: cat.quantity,
+          });
+        }
+      }
 
       showToast('Événement créé avec succès !', 'success');
       setShowModal(false); // Ferme vue
@@ -161,6 +182,74 @@ export default function Dashboard() {
       setIsSubmitting(false);
     }
   }; // Fin handleCreateEvent
+
+  /** Ouvre la modale d'édition avec les données pré-remplies. */
+  const handleOpenEdit = (evt: EventType) => {
+    setEditingEvent(evt);
+    setEditForm({
+      title: evt.title,
+      description: evt.description,
+      date: new Date(evt.eventDate).toISOString().slice(0, 16),
+      venue: evt.venue,
+      price: evt.price,
+      totalSeats: evt.totalSeats,
+      status: evt.status,
+    });
+    setShowEditModal(true);
+  };
+
+  /** Soumet la mise à jour d'un événement. */
+  const handleEditEvent = async (e: React.SyntheticEvent<HTMLFormElement>) => {
+    e.preventDefault();
+    if (!editingEvent) return;
+    setIsEditSubmitting(true);
+    try {
+      await api.put(`/events/${editingEvent.id}`, {
+        title: editForm.title,
+        description: editForm.description,
+        date: new Date(editForm.date).toISOString(),
+        venue: editForm.venue,
+        price: editForm.price,
+        totalSeats: editForm.totalSeats,
+        status: editForm.status,
+      });
+      showToast('Événement mis à jour !', 'success');
+      setShowEditModal(false);
+      setEditingEvent(null);
+      await fetchMyCreatedEvents();
+    } catch (err: any) {
+      showToast(err.response?.data?.message || "Erreur lors de la mise à jour.", 'error');
+    } finally {
+      setIsEditSubmitting(false);
+    }
+  };
+
+  /** Supprime un événement après confirmation. */
+  const handleDeleteEvent = async (id: string) => {
+    if (!window.confirm('Supprimer cet événement définitivement ?')) return;
+    setDeletingId(id);
+    try {
+      await api.delete(`/events/${id}`);
+      showToast('Événement supprimé.', 'success');
+      await fetchMyCreatedEvents();
+    } catch (err: any) {
+      showToast(err.response?.data?.message || "Erreur lors de la suppression.", 'error');
+    } finally {
+      setDeletingId(null);
+    }
+  };
+
+  /** Supprime un utilisateur (Admin uniquement). */
+  const handleDeleteUser = async (id: string) => {
+    if (!window.confirm('Supprimer cet utilisateur définitivement ?')) return;
+    try {
+      await api.delete(`/users/${id}`);
+      showToast('Utilisateur supprimé.', 'success');
+      await fetchAdminUsers();
+    } catch (err: any) {
+      showToast(err.response?.data?.message || "Erreur lors de la suppression.", 'error');
+    }
+  };
 
   // CALCULS DE STATISTIQUES
   // Total billets vendus sur les évènements listés
@@ -253,68 +342,128 @@ export default function Dashboard() {
       ) : ( // 2. Données Chargées
         <>
           {/* A. ONGLET ÉVÈNEMENTS */}
-          {activeTab === 'events' && (
-            events.length === 0 ? ( // Cas Vide
-              <div className="flex flex-col items-center justify-center py-20 card-dark gap-4">
-                <div className="w-12 h-12 rounded-sm bg-noir-800 border border-noir-700 flex items-center justify-center">
-                  <Calendar className="w-5 h-5 text-noir-500" />
+          {activeTab === 'events' && (() => {
+            const filteredEvents = statusFilter === 'ALL'
+              ? events
+              : events.filter(e => e.status === statusFilter);
+            return (
+              <div className="space-y-4">
+                {/* Barre de filtre statut */}
+                <div className="flex items-center gap-2 flex-wrap">
+                  {(['ALL', 'PUBLISHED', 'DRAFT', 'CANCELLED'] as const).map((s) => {
+                    const labels: Record<string, string> = { ALL: 'Tous', PUBLISHED: 'Publiés', DRAFT: 'Brouillons', CANCELLED: 'Annulés' };
+                    const counts: Record<string, number> = {
+                      ALL: events.length,
+                      PUBLISHED: events.filter(e => e.status === 'PUBLISHED').length,
+                      DRAFT: events.filter(e => e.status === 'DRAFT').length,
+                      CANCELLED: events.filter(e => e.status === 'CANCELLED').length,
+                    };
+                    return (
+                      <button
+                        key={s}
+                        onClick={() => setStatusFilter(s)}
+                        className={`flex items-center gap-1.5 px-3 py-1.5 rounded-sm text-xs font-mono font-medium border transition-all duration-150
+                          ${statusFilter === s
+                            ? 'border-sol text-sol bg-sol/5'
+                            : 'border-noir-700 text-noir-400 hover:border-noir-600 hover:text-noir-200'
+                          }`}
+                      >
+                        {labels[s]}
+                        <span className={`px-1 rounded text-[10px] ${statusFilter === s ? 'bg-sol/20 text-sol' : 'bg-noir-800 text-noir-500'}`}>
+                          {counts[s]}
+                        </span>
+                      </button>
+                    );
+                  })}
                 </div>
-                <div className="text-center">
-                  <div className="label-dim mb-2">Vide</div>
-                  <p className="text-noir-300 text-sm">Aucun événement créé pour le moment.</p>
-                </div>
-                <button onClick={() => setShowModal(true)} className="btn-sol mt-2">
-                  <Plus className="w-4 h-4" /> Créer votre premier événement
-                </button>
-              </div>
-            ) : ( // Tableau des évènements
-              <div className="card-dark overflow-hidden">
-                <table className="min-w-full table-dark">
-                  <thead>
-                    <tr>
-                      <th>Titre / Lieu</th>
-                      <th>Date</th>
-                      <th>Ventes</th>
-                      <th>Statut</th>
-                      <th className="text-right">Prix</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {events.map((evt) => {
-                      const sold = evt.totalSeats - evt.availableSeats;
-                      const pct = Math.round((sold / evt.totalSeats) * 100);
-                      return (
-                        <tr key={evt.id}>
-                          <td>
-                            <div className="font-medium text-noir-100">{evt.title}</div>
-                            <div className="text-xs text-noir-400 font-mono mt-0.5">{evt.venue}</div>
-                          </td>
-                          <td>
-                            <span className="font-mono text-noir-300">
-                              {new Date(evt.eventDate).toLocaleDateString('fr-FR')}
-                            </span>
-                          </td>
-                          <td>
-                            {/* Jauge de remplissage */}
-                            <div className="w-24 h-1 bg-noir-700 rounded-full overflow-hidden mb-1">
-                              <div className="bg-sol h-full rounded-full" style={{ width: `${pct}%` }} />
-                            </div>
-                            <span className="text-xs font-mono text-noir-400">
-                              {sold} / {evt.totalSeats}
-                            </span>
-                          </td>
-                          <td><StatusBadge status={evt.status} /></td>
-                          <td className="text-right">
-                            <span className="font-mono text-noir-100">{evt.price} €</span>
-                          </td>
+
+                {filteredEvents.length === 0 ? (
+                  <div className="flex flex-col items-center justify-center py-20 card-dark gap-4">
+                    <div className="w-12 h-12 rounded-sm bg-noir-800 border border-noir-700 flex items-center justify-center">
+                      <Calendar className="w-5 h-5 text-noir-500" />
+                    </div>
+                    <div className="text-center">
+                      <div className="label-dim mb-2">Vide</div>
+                      <p className="text-noir-300 text-sm">
+                        {statusFilter === 'ALL' ? 'Aucun événement créé pour le moment.' : `Aucun événement ${statusFilter === 'DRAFT' ? 'en brouillon' : statusFilter === 'CANCELLED' ? 'annulé' : 'publié'}.`}
+                      </p>
+                    </div>
+                    {statusFilter === 'ALL' && (
+                      <button onClick={() => setShowModal(true)} className="btn-sol mt-2">
+                        <Plus className="w-4 h-4" /> Créer votre premier événement
+                      </button>
+                    )}
+                  </div>
+                ) : (
+                  <div className="card-dark overflow-hidden">
+                    <table className="min-w-full table-dark">
+                      <thead>
+                        <tr>
+                          <th>Titre / Lieu</th>
+                          <th>Date</th>
+                          <th>Ventes</th>
+                          <th>Statut</th>
+                          <th className="text-right">Prix</th>
+                          <th className="text-right">Actions</th>
                         </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
+                      </thead>
+                      <tbody>
+                        {filteredEvents.map((evt) => {
+                          const sold = evt.totalSeats - evt.availableSeats;
+                          const pct = Math.round((sold / evt.totalSeats) * 100);
+                          return (
+                            <tr key={evt.id}>
+                              <td>
+                                <div className="font-medium text-noir-100">{evt.title}</div>
+                                <div className="text-xs text-noir-400 font-mono mt-0.5">{evt.venue}</div>
+                              </td>
+                              <td>
+                                <span className="font-mono text-noir-300">
+                                  {new Date(evt.eventDate).toLocaleDateString('fr-FR')}
+                                </span>
+                              </td>
+                              <td>
+                                <div className="w-24 h-1 bg-noir-700 rounded-full overflow-hidden mb-1">
+                                  <div className="bg-sol h-full rounded-full" style={{ width: `${pct}%` }} />
+                                </div>
+                                <span className="text-xs font-mono text-noir-400">{sold} / {evt.totalSeats}</span>
+                              </td>
+                              <td><StatusBadge status={evt.status} /></td>
+                              <td className="text-right">
+                                <span className="font-mono text-noir-100">{evt.price} €</span>
+                              </td>
+                              <td className="text-right">
+                                <div className="flex items-center justify-end gap-2">
+                                  <button
+                                    onClick={() => handleOpenEdit(evt)}
+                                    className="p-1.5 rounded-sm text-noir-400 hover:text-sol hover:bg-noir-800 transition-colors"
+                                    title="Modifier"
+                                  >
+                                    <Edit2 className="w-3.5 h-3.5" />
+                                  </button>
+                                  <button
+                                    onClick={() => handleDeleteEvent(evt.id)}
+                                    disabled={deletingId === evt.id}
+                                    className="p-1.5 rounded-sm text-noir-400 hover:text-red-400 hover:bg-noir-800 transition-colors disabled:opacity-40"
+                                    title="Supprimer"
+                                  >
+                                    {deletingId === evt.id
+                                      ? <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                                      : <Trash2 className="w-3.5 h-3.5" />
+                                    }
+                                  </button>
+                                </div>
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
               </div>
-            )
-          )}
+            );
+          })()}
 
           {/* B. ONGLET UTILISATEURS (Admin uniquement) */}
           {activeTab === 'users' && isAdmin && (
@@ -331,6 +480,7 @@ export default function Dashboard() {
                       <th>Nom</th>
                       <th>Email</th>
                       <th>ID</th>
+                      <th className="text-right">Actions</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -346,6 +496,15 @@ export default function Dashboard() {
                         </td>
                         <td className="text-noir-300">{u.email}</td>
                         <td className="font-mono text-xs text-noir-500">{u.id}</td>
+                        <td className="text-right">
+                          <button
+                            onClick={() => handleDeleteUser(u.id)}
+                            className="p-1.5 rounded-sm text-noir-400 hover:text-red-400 hover:bg-noir-800 transition-colors"
+                            title="Supprimer l'utilisateur"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        </td>
                       </tr>
                     ))}
                   </tbody>
@@ -455,27 +614,96 @@ export default function Dashboard() {
                 </div>
               </div>
 
-              {/* Billetterie rattachée */}
-              <div className="border-t border-noir-700 pt-4">
-                <div className="label-dim mb-3">Billetterie standard</div>
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <label className="label-dim block mb-2">Prix (€)</label>
-                    <input
-                      type="number" min="0" required className="input-dark font-mono"
-                      value={pricesAndPlaces.price}
-                      onChange={(e) => setPricesAndPlaces({ ...pricesAndPlaces, price: Number(e.target.value) })}
-                    />
-                  </div>
-                  <div>
-                    <label className="label-dim block mb-2">Capacité (places)</label>
-                    <input
-                      type="number" min="1" required className="input-dark font-mono"
-                      value={pricesAndPlaces.totalSeats}
-                      onChange={(e) => setPricesAndPlaces({ ...pricesAndPlaces, totalSeats: Number(e.target.value) })}
-                    />
-                  </div>
+              {/* Capacité totale de l'événement */}
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="label-dim block mb-2">Prix de base (€)</label>
+                  <input
+                    type="number" min="0" required className="input-dark font-mono"
+                    value={pricesAndPlaces.price}
+                    onChange={(e) => setPricesAndPlaces({ ...pricesAndPlaces, price: Number(e.target.value) })}
+                  />
                 </div>
+                <div>
+                  <label className="label-dim block mb-2">Capacité totale (places)</label>
+                  <input
+                    type="number" min="1" required className="input-dark font-mono"
+                    value={pricesAndPlaces.totalSeats}
+                    onChange={(e) => setPricesAndPlaces({ ...pricesAndPlaces, totalSeats: Number(e.target.value) })}
+                  />
+                </div>
+              </div>
+
+              {/* Catégories de billets */}
+              <div className="border-t border-noir-700 pt-4">
+                <div className="flex items-center justify-between mb-3">
+                  <div className="label-dim">Catégories de billets</div>
+                  <button
+                    type="button"
+                    onClick={() => setTicketCategories([...ticketCategories, { type: '', price: pricesAndPlaces.price, quantity: 0 }])}
+                    className="flex items-center gap-1 text-xs text-sol hover:text-sol/80 font-mono transition-colors"
+                  >
+                    <Plus className="w-3 h-3" /> Ajouter
+                  </button>
+                </div>
+                <div className="space-y-2">
+                  {ticketCategories.map((cat, idx) => (
+                    <div key={idx} className="flex items-center gap-2">
+                      <input
+                        type="text" placeholder="Ex: VIP, STANDARD…" required
+                        className="input-dark flex-1 text-xs"
+                        value={cat.type}
+                        onChange={(e) => {
+                          const updated = [...ticketCategories];
+                          updated[idx] = { ...updated[idx], type: e.target.value };
+                          setTicketCategories(updated);
+                        }}
+                      />
+                      <input
+                        type="number" min="0" placeholder="Prix €" required
+                        className="input-dark w-20 font-mono text-xs"
+                        value={cat.price}
+                        onChange={(e) => {
+                          const updated = [...ticketCategories];
+                          updated[idx] = { ...updated[idx], price: Number(e.target.value) };
+                          setTicketCategories(updated);
+                        }}
+                      />
+                      <input
+                        type="number" min="1" placeholder="Qté" required
+                        className="input-dark w-20 font-mono text-xs"
+                        value={cat.quantity}
+                        onChange={(e) => {
+                          const updated = [...ticketCategories];
+                          updated[idx] = { ...updated[idx], quantity: Number(e.target.value) };
+                          setTicketCategories(updated);
+                        }}
+                      />
+                      {ticketCategories.length > 1 && (
+                        <button
+                          type="button"
+                          onClick={() => setTicketCategories(ticketCategories.filter((_, i) => i !== idx))}
+                          className="text-noir-500 hover:text-red-400 transition-colors flex-shrink-0"
+                        >
+                          <X className="w-3.5 h-3.5" />
+                        </button>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {/* Statut de publication */}
+              <div>
+                <label className="label-dim block mb-2">Statut</label>
+                <select
+                  className="input-dark"
+                  value={newEvent.status}
+                  onChange={(e) => setNewEvent({ ...newEvent, status: e.target.value })}
+                >
+                  <option value="PUBLISHED">Publié</option>
+                  <option value="DRAFT">Brouillon</option>
+                </select>
               </div>
 
               {/* Actions de validation */}
@@ -490,7 +718,112 @@ export default function Dashboard() {
                 >
                   {isSubmitting
                     ? <><Loader2 className="w-4 h-4 animate-spin" /> Création...</>
-                    : "Publier l'événement →"
+                    : newEvent.status === 'DRAFT' ? 'Enregistrer brouillon →' : "Publier l'événement →"
+                  }
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+      {/* MODAL D'ÉDITION ÉVÉNEMENT */}
+      {showEditModal && editingEvent && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+          <div
+            className="absolute inset-0 bg-black/40 backdrop-blur-sm"
+            onClick={() => !isEditSubmitting && setShowEditModal(false)}
+          />
+          <div className="relative card-dark max-w-lg w-full p-7 shadow-2xl animate-fade-up overflow-y-auto max-h-[90vh]">
+            <button
+              onClick={() => setShowEditModal(false)}
+              disabled={isEditSubmitting}
+              className="absolute top-4 right-4 text-noir-500 hover:text-noir-200 transition-colors"
+            >
+              <X className="w-4 h-4" />
+            </button>
+
+            <div className="mb-6">
+              <div className="label-sol mb-1">Modifier l'événement</div>
+              <h2 className="font-display font-semibold text-2xl text-noir-50 line-clamp-1">{editingEvent.title}</h2>
+            </div>
+
+            <form onSubmit={handleEditEvent} className="space-y-4">
+              <div>
+                <label className="label-dim block mb-2">Titre</label>
+                <input
+                  type="text" required className="input-dark"
+                  value={editForm.title}
+                  onChange={(e) => setEditForm({ ...editForm, title: e.target.value })}
+                />
+              </div>
+              <div>
+                <label className="label-dim block mb-2">Description</label>
+                <textarea
+                  rows={3} required className="input-dark resize-none"
+                  value={editForm.description}
+                  onChange={(e) => setEditForm({ ...editForm, description: e.target.value })}
+                />
+              </div>
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="label-dim block mb-2">Date et heure</label>
+                  <input
+                    type="datetime-local" required className="input-dark"
+                    value={editForm.date}
+                    onChange={(e) => setEditForm({ ...editForm, date: e.target.value })}
+                  />
+                </div>
+                <div>
+                  <label className="label-dim block mb-2">Lieu / Salle</label>
+                  <input
+                    type="text" required className="input-dark"
+                    value={editForm.venue}
+                    onChange={(e) => setEditForm({ ...editForm, venue: e.target.value })}
+                  />
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="label-dim block mb-2">Prix (€)</label>
+                  <input
+                    type="number" min="0" required className="input-dark font-mono"
+                    value={editForm.price}
+                    onChange={(e) => setEditForm({ ...editForm, price: Number(e.target.value) })}
+                  />
+                </div>
+                <div>
+                  <label className="label-dim block mb-2">Capacité (places)</label>
+                  <input
+                    type="number" min="1" required className="input-dark font-mono"
+                    value={editForm.totalSeats}
+                    onChange={(e) => setEditForm({ ...editForm, totalSeats: Number(e.target.value) })}
+                  />
+                </div>
+              </div>
+              <div>
+                <label className="label-dim block mb-2">Statut</label>
+                <select
+                  className="input-dark"
+                  value={editForm.status}
+                  onChange={(e) => setEditForm({ ...editForm, status: e.target.value })}
+                >
+                  <option value="PUBLISHED">Publié</option>
+                  <option value="DRAFT">Brouillon</option>
+                  <option value="CANCELLED">Annulé</option>
+                </select>
+              </div>
+              <div className="flex gap-3 pt-2">
+                <button
+                  type="button" onClick={() => setShowEditModal(false)} disabled={isEditSubmitting} className="btn-ghost flex-1"
+                >
+                  Annuler
+                </button>
+                <button
+                  type="submit" disabled={isEditSubmitting} className="btn-sol flex-1"
+                >
+                  {isEditSubmitting
+                    ? <><Loader2 className="w-4 h-4 animate-spin" /> Mise à jour...</>
+                    : 'Enregistrer →'
                   }
                 </button>
               </div>

@@ -1,4 +1,4 @@
-# ----- Variables d'environnement (JAMAIS commitées) ---------
+# Variables d'environnement (JAMAIS commitées)
 .env
 .env.local
 .env.*.local
@@ -7,40 +7,40 @@
 !.env.example
 !**/.env.example
 
-# ----- Clés JWT – CRITIQUE SÉCURITÉ -------------------------
+# Clés JWT – CRITIQUE SÉCURITÉ
 *.pem
 config/jwt/
 **/config/jwt/
 
-# ----- Symfony ----------------------------------------------
+# Symfony
 vendor/
 **/vendor/
 var/
 **/var/
 .symfony/
 
-# ----- Node.js ----------------------------------------------
+# Node.js
 node_modules/
 **/node_modules/
 
-# ----- Build / compilation ----------------------------------
+# Build / compilation
 dist/
 **/dist/
 build/
 **/build/
 
-# ----- Logs -------------------------------------------------
+# Logs
 *.log
 **/*.log
 logs/
 **/logs/
 
-# ----- Couverture de tests ----------------------------------
+# Couverture de tests
 coverage/
 **/coverage/
 .nyc_output/
 
-# ----- IDE --------------------------------------------------
+# IDE
 .idea/
 .vscode/
 *.swp
@@ -48,7 +48,7 @@ coverage/
 *.DS_Store
 Thumbs.db
 
-# ----- PHPUnit cache ----------------------------------------
+# PHPUnit cache
 .phpunit.cache/
 **/.phpunit.cache/
 .phpunit.result.cache

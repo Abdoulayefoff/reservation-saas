@@ -1,9 +1,17 @@
 import { useState } from 'react';
-import type { EventType } from '../pages/Home'; 
+import type { EventType } from '../pages/Home';
 import { MapPin, Loader2, X } from 'lucide-react';
-import { useAuth } from '../context/AuthContext'; 
+import { useAuth } from '../context/AuthContext';
 import { useNavigate, Link } from 'react-router-dom';
-import api from '../api/axios'; 
+import api from '../api/axios';
+
+interface TicketOption {
+  id: string;
+  type: string;
+  price: string;
+  quantity: number;
+  available: number;
+}
 
 interface EventCardProps { 
   event: EventType; 
@@ -22,9 +30,14 @@ export default function EventCard({ event, onPurchaseSuccess, animationIndex = 0
   const [success, setSuccess] = useState(false); // Succès paiement
   
   // États formulaire Carte Bancaire
-  const [cardNumber, setCardNumber] = useState(''); 
+  const [cardNumber, setCardNumber] = useState('');
   const [cardExpiry, setCardExpiry] = useState('');
   const [cardCvv, setCardCvv] = useState('');
+
+  // États ticketOptions
+  const [ticketOptions, setTicketOptions] = useState<TicketOption[]>([]);
+  const [selectedOptionId, setSelectedOptionId] = useState('');
+  const [loadingOptions, setLoadingOptions] = useState(false);
 
   // FORMATAGE DES DATES
   const eventDate = new Date(event.eventDate);
@@ -54,20 +67,31 @@ export default function EventCard({ event, onPurchaseSuccess, animationIndex = 0
    * Clic sur le bouton de réservation.
    * Redirige si non connecté, sinon ouvre la modal.
    */
-  const handleBuyClick = () => { 
-    if (!isAuthenticated) { // Sécurité
-      navigate('/login'); // Redirige vers connexion
-      return; // Stop
-    } 
-    
-    // Réinitialise le formulaire de la modal
+  const handleBuyClick = () => {
+    if (!isAuthenticated) {
+      navigate('/login');
+      return;
+    }
     setError('');
     setSuccess(false);
     setCardNumber('');
     setCardExpiry('');
     setCardCvv('');
-    setShowModal(true); // Ouvre la modal
-  }; 
+    setTicketOptions([]);
+    setSelectedOptionId('');
+    setShowModal(true);
+
+    // Charge les catégories de billets disponibles
+    setLoadingOptions(true);
+    api.get(`/events/${event.id}/ticket-options`)
+      .then((res) => {
+        const opts: TicketOption[] = res.data.ticketOptions || res.data || [];
+        setTicketOptions(opts);
+        if (opts.length > 0) setSelectedOptionId(opts[0].id);
+      })
+      .catch(() => {})
+      .finally(() => setLoadingOptions(false));
+  };
 
   /**
    * Action de validation du paiement dans la modal.
@@ -90,8 +114,13 @@ export default function EventCard({ event, onPurchaseSuccess, animationIndex = 0
     setError(''); // Nettoie erreurs
     setLoading(true); 
     
-    try { // Appel API
-      await api.post('/tickets/buy', { eventId: event.id, quantity: 1, cardNumber }); 
+    try {
+      await api.post('/tickets/buy', {
+        eventId: event.id,
+        quantity: 1,
+        cardNumber,
+        ...(selectedOptionId ? { ticketOptionId: selectedOptionId } : {}),
+      });
       setSuccess(true); 
       
       // Auto-fermeture après temporisation de 2 secondes
@@ -246,9 +275,38 @@ export default function EventCard({ event, onPurchaseSuccess, animationIndex = 0
                   </div>
                   <div className="border-t border-dashed border-noir-650 pt-2.5 flex justify-between items-center">
                     <span className="text-noir-200 text-sm font-semibold">Total</span>
-                    <span className="font-mono font-bold text-xl text-sol">{event.price} €</span>
+                    <span className="font-mono font-bold text-xl text-sol">
+                      {selectedOptionId
+                        ? (parseFloat(ticketOptions.find(o => o.id === selectedOptionId)?.price ?? String(event.price)) || event.price).toFixed(0)
+                        : event.price
+                      } €
+                    </span>
                   </div>
                 </div>
+
+                {/* Sélecteur catégorie de billet */}
+                {loadingOptions && (
+                  <div className="flex items-center gap-2 text-xs text-noir-400 font-mono mb-4">
+                    <Loader2 className="w-3 h-3 animate-spin" /> Chargement des catégories...
+                  </div>
+                )}
+                {!loadingOptions && ticketOptions.length > 0 && (
+                  <div className="mb-4">
+                    <label className="label-dim block mb-1.5">Catégorie de billet</label>
+                    <select
+                      value={selectedOptionId}
+                      onChange={(e) => setSelectedOptionId(e.target.value)}
+                      disabled={loading}
+                      className="input-dark w-full"
+                    >
+                      {ticketOptions.map((opt) => (
+                        <option key={opt.id} value={opt.id}>
+                          {opt.type} — {parseFloat(opt.price).toFixed(0)} € ({opt.available} restant{opt.available > 1 ? 's' : ''})
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                )}
 
                 {/* Saisie Coordonnées Bancaires */}
                 <div className="space-y-3 mb-5">

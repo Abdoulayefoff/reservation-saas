@@ -1,6 +1,6 @@
 import axios, { AxiosError } from 'axios';
-import { PrismaClient } from '@prisma/client'; 
-import { RabbitMQService } from './rabbitMqService'; 
+import { PrismaClient, TicketStatus, PaymentStatus } from '@prisma/client';
+import { RabbitMQService } from './rabbitMqService';
 
 const prisma = new PrismaClient(); 
 const EVENT_SERVICE_URL = process.env.EVENT_SERVICE_URL || 'http://event-service:8003'; 
@@ -121,8 +121,8 @@ export class TicketService {
           venue, 
           pricePaid:     pricePerTicket, 
           paymentMethod: 'CARD',
-          paymentStatus: 'COMPLETED',
-          status:        'ACTIVE', 
+          paymentStatus: PaymentStatus.COMPLETED,
+          status:        TicketStatus.ACTIVE,
           transactionId,
         },
       }); 
@@ -205,7 +205,7 @@ export class TicketService {
   public async cancelTicket(ticketId: string, userId: string, roles: string[]) {
     const ticket = await this.getTicket(ticketId, userId, roles); 
 
-    if (ticket.status !== 'ACTIVE') { 
+    if (ticket.status !== TicketStatus.ACTIVE) {
       throw new Error('Only active tickets can be cancelled.'); // Bloque
     } // Fin test statut
 
@@ -231,7 +231,7 @@ export class TicketService {
     // ÉTAPE 3 : Mettre à jour le statut du Billet 
     return prisma.ticket.update({ 
       where: { id: ticketId }, 
-      data:  { status: 'CANCELLED' }, 
+      data:  { status: TicketStatus.CANCELLED },
     }); 
   } 
 

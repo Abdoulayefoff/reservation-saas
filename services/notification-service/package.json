@@ -4,7 +4,7 @@
   "description": "Notification Service – Consumer RabbitMQ pour les confirmations de billets d'événements",
   "main": "dist/consumer.js",
   "scripts": {
-    "build": "tsc",
+    "build": "tsc -p tsconfig.build.json",
     "start": "node dist/consumer.js",
     "dev": "ts-node src/consumer.ts",
     "test": "jest --coverage",

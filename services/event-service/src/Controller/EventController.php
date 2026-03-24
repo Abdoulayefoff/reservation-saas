@@ -68,6 +68,31 @@ class EventController extends AbstractController
         );
     } 
 
+    // GET /events/mine – Évènements du créateur authentifié (tous statuts : PUBLISHED, DRAFT, CANCELLED)
+    #[Route('/mine', name: 'events_mine', methods: ['GET'])]
+    #[OA\Get(
+        summary: 'Mes événements (tous statuts)',
+        description: 'Retourne tous les événements créés par l\'utilisateur authentifié, quel que soit leur statut.',
+        tags: ['Events'],
+    )]
+    #[OA\Response(response: 200, description: 'Liste des événements du créateur')]
+    #[OA\Response(response: 401, description: 'Unauthorized')]
+    public function mine(Request $request): JsonResponse
+    {
+        $userId = $request->headers->get('X-User-Id');
+        if (!$userId) {
+            return new JsonResponse(['error' => 'Unauthorized'], 401);
+        }
+
+        $userRoles = explode(',', $request->headers->get('X-User-Roles', ''));
+        $events = $this->eventService->getCreatorEvents($userId, $userRoles);
+
+        return new JsonResponse(
+            $this->serializer->serialize($events, 'json', ['groups' => 'event:read']),
+            200, [], true
+        );
+    }
+
     //  GET /events/{id} – Détail d'un évènement
     #[Route('/{id}', name: 'events_get', methods: ['GET'])]
     #[OA\Response( // Réponse Succès

@@ -142,6 +142,19 @@ class EventService
     } 
 
     /**
+     * Retourne tous les événements d'un créateur (tous statuts).
+     * Admin : retourne tous les événements du système.
+     * @return Event[]
+     */
+    public function getCreatorEvents(string $userId, array $userRoles = []): array
+    {
+        if (in_array('ROLE_ADMIN', $userRoles)) {
+            return $this->eventRepository->findAll();
+        }
+        return $this->eventRepository->findByCreator($userId);
+    }
+
+    /**
      * Supprime définitivement un évènement de la base de données.
      */
     public function deleteEvent(string $id, string $userId, array $userRoles): void

@@ -152,6 +152,47 @@ describe('API Gateway – Routes', () => {
     });
   });
 
+  // Route EVENTS/MINE (authentifiée — tous statuts du créateur)
+  describe('GET /api/events/mine (protégée)', () => {
+    test('retourne 401 sans token', async () => {
+      const res = await request(app).get('/api/events/mine');
+
+      expect(res.status).toBe(401);
+      expect(res.body.error).toBe('Unauthorized');
+    });
+
+    test('est proxié avec un token valide (ROLE_EVENT_CREATOR)', async () => {
+      const res = await request(app)
+        .get('/api/events/mine')
+        .set('Authorization', `Bearer ${makeValidToken(['ROLE_EVENT_CREATOR'])}`);
+
+      expect(res.status).not.toBe(401);
+      expect(res.body.proxied).toBe(true);
+    });
+
+    test('est proxié avec un token admin', async () => {
+      const res = await request(app)
+        .get('/api/events/mine')
+        .set('Authorization', `Bearer ${makeValidToken(['ROLE_ADMIN'])}`);
+
+      expect(res.status).not.toBe(401);
+    });
+
+    test('retourne 401 avec un token expiré', async () => {
+      const expiredToken = jwt.sign(
+        { userId: 'u1', email: 'a@b.com', roles: ['ROLE_EVENT_CREATOR'] },
+        TEST_SECRET,
+        { expiresIn: -1 }
+      );
+
+      const res = await request(app)
+        .get('/api/events/mine')
+        .set('Authorization', `Bearer ${expiredToken}`);
+
+      expect(res.status).toBe(401);
+    });
+  });
+
   // Routes USERS (protégées)
   describe('Routes /api/users (protégées)', () => {
     test('GET /api/users/:id sans token retourne 401', async () => {

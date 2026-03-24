@@ -4,7 +4,7 @@
   "description": "API Gateway – Point d'entrée unique, validation JWT et proxy vers les microservices",
   "main": "dist/app.js",
   "scripts": {
-    "build": "tsc && cp src/swagger.yaml dist/",
+    "build": "tsc -p tsconfig.build.json && cp src/swagger.yaml dist/",
     "start": "node dist/app.js",
     "dev": "ts-node src/app.ts",
     "test": "jest --coverage",
