@@ -1,0 +1,310 @@
+openapi: 3.0.0
+info:
+  title: Ticket Service API
+  version: 1.0.0
+  description: >
+    API de gestion des billets — achat, consultation, annulation.
+    Ce service est accessible uniquement via l'API Gateway (port 8000).
+    Les headers X-User-Id et X-User-Roles sont injectés automatiquement par la Gateway.
+servers:
+  - url: http://localhost:8000/api
+    description: Via API Gateway (production)
+  - url: http://localhost:8004
+    description: Accès direct (développement uniquement)
+
+tags:
+  - name: Tickets
+    description: Gestion du cycle de vie des billets
+
+components:
+  schemas:
+    Ticket:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+          example: "550e8400-e29b-41d4-a716-446655440000"
+        userId:
+          type: string
+          format: uuid
+          example: "a1b2c3d4-e5f6-7890-abcd-ef1234567890"
+        eventId:
+          type: string
+          format: uuid
+          example: "b2c3d4e5-f6a7-8901-bcde-f12345678901"
+        pricePaid:
+          type: string
+          example: "49.99"
+        status:
+          type: string
+          enum: [ACTIVE, CANCELLED, USED]
+          example: "ACTIVE"
+        purchaseDate:
+          type: string
+          format: date-time
+          example: "2025-03-22T14:30:00Z"
+
+    PurchaseRequest:
+      type: object
+      required:
+        - eventId
+        - quantity
+      properties:
+        eventId:
+          type: string
+          format: uuid
+          example: "b2c3d4e5-f6a7-8901-bcde-f12345678901"
+        quantity:
+          type: integer
+          minimum: 1
+          example: 1
+
+    ErrorResponse:
+      type: object
+      properties:
+        error:
+          type: string
+          example: "Unauthorized"
+        message:
+          type: string
+          example: "Token JWT manquant ou format invalide."
+
+  headers:
+    X-User-Id:
+      description: UUID de l'utilisateur authentifié (injecté par la Gateway)
+      schema:
+        type: string
+        format: uuid
+    X-User-Roles:
+      description: Rôles de l'utilisateur séparés par virgule (ex. ROLE_USER,ROLE_ADMIN)
+      schema:
+        type: string
+
+paths:
+  /health:
+    get:
+      summary: Health check du service
+      tags:
+        - Tickets
+      responses:
+        '200':
+          description: Service opérationnel
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: "ok"
+                  service:
+                    type: string
+                    example: "ticket-service"
+
+  /tickets:
+    get:
+      summary: Liste les billets de l'utilisateur connecté
+      tags:
+        - Tickets
+      parameters:
+        - in: header
+          name: X-User-Id
+          required: true
+          schema:
+            type: string
+            format: uuid
+          description: UUID de l'utilisateur (injecté par la Gateway)
+      responses:
+        '200':
+          description: Liste des billets de l'utilisateur
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Ticket'
+        '401':
+          description: Utilisateur non authentifié
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                error: "Unauthorized"
+                message: "Token JWT manquant ou format invalide."
+
+  /tickets/purchase:
+    post:
+      summary: Achète un billet pour un événement
+      description: >
+        Vérifie la disponibilité des places auprès du Event Service (SELECT FOR UPDATE),
+        crée le billet et publie un message RabbitMQ sur l'exchange `ticket_events`
+        avec la routing key `ticket.confirmed`.
+      tags:
+        - Tickets
+      parameters:
+        - in: header
+          name: X-User-Id
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - in: header
+          name: X-User-Roles
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PurchaseRequest'
+            example:
+              eventId: "b2c3d4e5-f6a7-8901-bcde-f12345678901"
+              quantity: 1
+      responses:
+        '201':
+          description: Billet acheté avec succès
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Ticket'
+        '400':
+          description: Requête invalide (données manquantes ou quantité incorrecte)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                error: "Bad Request"
+                message: "Champ eventId manquant."
+        '401':
+          description: Utilisateur non authentifié
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '409':
+          description: Plus de places disponibles (anti-survente)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                error: "Conflict"
+                message: "Plus de places disponibles pour cet événement."
+
+  /tickets/{id}:
+    get:
+      summary: Récupère les détails d'un billet
+      tags:
+        - Tickets
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+            format: uuid
+          description: UUID du billet
+        - in: header
+          name: X-User-Id
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Détails du billet
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Ticket'
+        '401':
+          description: Utilisateur non authentifié
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '403':
+          description: Accès interdit (le billet n'appartient pas à l'utilisateur)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                error: "Forbidden"
+                message: "Vous n'êtes pas autorisé à consulter ce billet."
+        '404':
+          description: Billet introuvable
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                error: "Not Found"
+                message: "Billet introuvable."
+
+  /tickets/{id}/cancel:
+    patch:
+      summary: Annule un billet et libère la place
+      description: >
+        Annule un billet (status → CANCELLED) et appelle le Event Service
+        pour libérer la place réservée.
+      tags:
+        - Tickets
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+            format: uuid
+          description: UUID du billet à annuler
+        - in: header
+          name: X-User-Id
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Billet annulé avec succès
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Ticket'
+        '400':
+          description: Billet déjà annulé ou non annulable
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                error: "Bad Request"
+                message: "Ce billet est déjà annulé."
+        '401':
+          description: Utilisateur non authentifié
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '403':
+          description: Accès interdit
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                error: "Forbidden"
+                message: "Vous n'êtes pas autorisé à annuler ce billet."
+        '404':
+          description: Billet introuvable
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'

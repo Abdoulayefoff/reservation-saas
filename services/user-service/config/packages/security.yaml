@@ -1,0 +1,28 @@
+# security.yaml – Configuration de la sécurité User Service
+# Le User Service ne fait PAS d'authentification directe.
+# Il reçoit les headers X-User-Id et X-User-Roles de l'API Gateway.
+# La sécurité est donc minimale ici.
+
+security:
+    # Pas de hashage de mot de passe (géré par Auth Service)
+    password_hashers:
+        Symfony\Component\Security\Core\User\PasswordAuthenticatedUserInterface: 'auto'
+
+    # Provider en mémoire (pas de login direct)
+    providers:
+        users_in_memory: { memory: null }
+
+    firewalls:
+        # Routes de développement Symfony
+        dev:
+            pattern: ^/(_profiler|_wdt|assets|build)/
+            security: false
+
+        # Toutes les routes – pas de firewall Symfony (l'auth est gérée par la Gateway)
+        main:
+            lazy: true
+            stateless: true
+
+    # Pas de contrôle d'accès Symfony – géré au niveau du contrôleur
+    # via les headers X-User-Id et X-User-Roles injectés par la Gateway
+    access_control: []

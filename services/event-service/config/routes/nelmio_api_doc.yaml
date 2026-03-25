@@ -1,0 +1,18 @@
+# routes/nelmio_api_doc.yaml – Routes Swagger UI
+# Documentation interactive accessible à /api/doc
+
+# Route pour l'interface Swagger UI
+app.swagger_ui:
+    path: /api/doc
+    methods: GET
+    defaults:
+        _controller: nelmio_api_doc.controller.redocly
+        area: default
+
+# Route pour le fichier JSON de la spec OpenAPI
+app.swagger:
+    path: /api/doc.json
+    methods: GET
+    defaults:
+        _controller: nelmio_api_doc.controller.swagger_json
+        area: default

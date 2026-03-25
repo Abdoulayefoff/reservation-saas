@@ -16,9 +16,7 @@
 
 set -e  # Arrêter à la première erreur
 
-# ─────────────────────────────────────────────────────────────
 # COULEURS ET FONCTIONS D'AFFICHAGE
-# ─────────────────────────────────────────────────────────────
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
 RED='\033[0;31m'
@@ -28,21 +26,17 @@ NC='\033[0m' # No Color
 info()    { echo -e "${GREEN}[INFO]${NC} $1"; }
 warn()    { echo -e "${YELLOW}[WARN]${NC} $1"; }
 error()   { echo -e "${RED}[ERROR]${NC} $1"; }
-section() { echo -e "\n${BLUE}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"; \
+section() { echo -e "\n${BLUE}------------------------------------------------${NC}"; \
             echo -e "${BLUE} $1${NC}"; \
-            echo -e "${BLUE}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}\n"; }
+            echo -e "${BLUE}--------------------------------------------------${NC}\n"; }
 
-# ─────────────────────────────────────────────────────────────
 # FONCTION : Générer un secret aléatoire sécurisé
-# ─────────────────────────────────────────────────────────────
 generate_secret() {
     openssl rand -hex 32
 }
 
-# ─────────────────────────────────────────────────────────────
 # FONCTION : Remplacer une variable dans .env
 # Compatible macOS et Linux
-# ─────────────────────────────────────────────────────────────
 replace_in_env() {
     local var_name=$1
     local new_value=$2
@@ -55,11 +49,9 @@ replace_in_env() {
     fi
 }
 
-# ─────────────────────────────────────────────────────────────
 # FONCTION : Attendre qu'un container soit healthy
 # $1 : nom du container
 # $2 : timeout en secondes (défaut 120)
-# ─────────────────────────────────────────────────────────────
 wait_healthy() {
     local container=$1
     local timeout=${2:-120}
@@ -84,10 +76,8 @@ wait_healthy() {
     exit 1
 }
 
-# ─────────────────────────────────────────────────────────────
 # ÉTAPE 1 – Vérification des prérequis
-# ─────────────────────────────────────────────────────────────
-section "Étape 1/9 – Vérification des prérequis"
+section "Étape 1/5 – Vérification des prérequis"
 
 if ! command -v docker &> /dev/null; then
     error "Docker n'est pas installé."
@@ -110,10 +100,17 @@ if ! docker info &> /dev/null; then
 fi
 info "Docker est en cours d'exécution ✅"
 
-# ─────────────────────────────────────────────────────────────
+# Vérification du port 80 (utilisé par Nginx)
+if lsof -i :80 -sTCP:LISTEN &>/dev/null 2>&1 || ss -tlnp 2>/dev/null | grep -q ':80 '; then
+    warn "⚠️  Le port 80 est déjà occupé sur cette machine (Apache, httpd, ou autre service)."
+    warn "   Nginx ne pourra pas démarrer. Arrêtez le service qui utilise le port 80 avant de continuer."
+    warn "   Sur Linux  : sudo systemctl stop apache2  (ou httpd)"
+    warn "   Sur macOS  : sudo apachectl stop"
+    warn "   Astuce     : identifiez le processus avec : lsof -i :80"
+fi
+
 # ÉTAPE 2 – Configuration du fichier .env
-# ─────────────────────────────────────────────────────────────
-section "Étape 2/9 – Configuration de l'environnement"
+section "Étape 2/5 – Configuration de l'environnement"
 
 if [ ! -f ".env.example" ]; then
     error "Le fichier .env.example est introuvable !"
@@ -134,10 +131,8 @@ set -a
 source .env
 set +a
 
-# ─────────────────────────────────────────────────────────────
 # ÉTAPE 3 – Génération automatique des secrets
-# ─────────────────────────────────────────────────────────────
-section "Étape 3/9 – Génération des secrets"
+section "Étape 3/5 – Génération des secrets"
 
 SECRETS_GENERATED=0
 
@@ -214,155 +209,67 @@ fi
 if [ $SECRETS_GENERATED -eq 1 ]; then
     info "Secrets générés et sauvegardés dans .env ✅"
     warn "Ne commitez JAMAIS le fichier .env sur Git !"
+
     # Recharger .env avec les nouvelles valeurs
+    set -a
+    source .env
+    set +a
+
+    # Recalcul des URLs composites
+    # Les DATABASE_URLs et RABBITMQ_URL utilisent les mots de passe
+    # générés ci-dessus. Il faut les mettre à jour dans .env.
+    info "Mise à jour des URLs de connexion..."
+
+    replace_in_env "AUTH_DATABASE_URL" "postgresql://${AUTH_DB_USER}:${AUTH_DB_PASSWORD}@${AUTH_DB_HOST}:${AUTH_DB_PORT}/${AUTH_DB_NAME}?serverVersion=16&charset=utf8"
+    replace_in_env "USER_DATABASE_URL" "postgresql://${USER_DB_USER}:${USER_DB_PASSWORD}@${USER_DB_HOST}:${USER_DB_PORT}/${USER_DB_NAME}?serverVersion=16&charset=utf8"
+    replace_in_env "EVENT_DATABASE_URL" "postgresql://${EVENT_DB_USER}:${EVENT_DB_PASSWORD}@${EVENT_DB_HOST}:${EVENT_DB_PORT}/${EVENT_DB_NAME}?serverVersion=16&charset=utf8"
+    replace_in_env "TICKET_DATABASE_URL" "postgresql://${TICKET_DB_USER}:${TICKET_DB_PASSWORD}@${TICKET_DB_HOST}:${TICKET_DB_PORT}/${TICKET_DB_NAME}?serverVersion=16&charset=utf8"
+    replace_in_env "RABBITMQ_URL" "amqp://${RABBITMQ_USER}:${RABBITMQ_PASSWORD}@${RABBITMQ_HOST}:${RABBITMQ_PORT}/"
+
+    info "URLs de connexion mises à jour ✅"
+
+    # Recharger une dernière fois avec les URLs mises à jour
     set -a
     source .env
     set +a
 fi
 
-# ─────────────────────────────────────────────────────────────
-# ÉTAPE 4 – Build et démarrage des containers
-# ─────────────────────────────────────────────────────────────
-section "Étape 4/9 – Build et démarrage des containers"
+# ÉTAPE 4 – Build des images Docker
+section "Étape 4/5 – Build des images Docker"
 
 info "Construction des images Docker..."
 info "Cette étape peut prendre plusieurs minutes lors de la première installation..."
+info "(Le frontend React est buildé directement dans l'image via Vite)"
 docker compose build
 
-info "Démarrage des containers de base (BDD + RabbitMQ)..."
-docker compose up -d auth-db user-db event-db ticket-db rabbitmq
+# ÉTAPE 5 – Démarrage et initialisation automatique
+section "Étape 5/5 – Démarrage complet"
 
-# Attendre que les BDD et RabbitMQ soient healthy avant de continuer
+info "Démarrage de tous les containers..."
+info "Chaque service s'initialise automatiquement au démarrage :"
+info "  • Symfony services : composer install + migrations Doctrine + JWT keypair"
+info "  • Node.js services : npm install + tsc build + migrations Prisma"
+info "  • Frontend         : déjà buildé dans l'image Docker (nginx statique)"
+docker compose up -d
+
+# Attendre que les bases de données et RabbitMQ soient prêts en premier
 wait_healthy "reservation_auth_db"
 wait_healthy "reservation_user_db"
 wait_healthy "reservation_event_db"
 wait_healthy "reservation_ticket_db"
 wait_healthy "reservation_rabbitmq" 180
 
-# ─────────────────────────────────────────────────────────────
-# ÉTAPE 5 – Installation des dépendances dans les containers
-# ─────────────────────────────────────────────────────────────
-section "Étape 5/9 – Installation des dépendances"
-
-# Démarrer les services sans les healthchecks pour pouvoir
-# exécuter composer install / npm install dedans
-info "Démarrage des services pour installation des dépendances..."
-docker compose up -d --no-healthcheck \
-    auth-service user-service event-service \
-    ticket-service notification-service api-gateway \
-    frontend
-
-sleep 5
-
-# ── Symfony Services ──────────────────────────────────────────
-
-info "Installation des dépendances Auth Service (composer)..."
-docker compose exec -T auth-service composer install \
-    --no-interaction --optimize-autoloader
-info "Auth Service – dépendances installées ✅"
-
-info "Installation des dépendances User Service (composer)..."
-docker compose exec -T user-service composer install \
-    --no-interaction --optimize-autoloader
-info "User Service – dépendances installées ✅"
-
-info "Installation des dépendances Event Service (composer)..."
-docker compose exec -T event-service composer install \
-    --no-interaction --optimize-autoloader
-info "Event Service – dépendances installées ✅"
-
-# ── Node.js Services ──────────────────────────────────────────
-
-info "Installation des dépendances Ticket Service (npm)..."
-docker compose exec -T ticket-service npm install
-info "Ticket Service – dépendances installées ✅"
-
-info "Installation des dépendances Notification Service (npm)..."
-docker compose exec -T notification-service npm install
-info "Notification Service – dépendances installées ✅"
-
-info "Installation des dépendances API Gateway (npm)..."
-docker compose exec -T api-gateway npm install
-info "API Gateway – dépendances installées ✅"
-
-info "Installation des dépendances Frontend (npm)..."
-docker compose exec -T frontend npm install
-info "Frontend – dépendances installées ✅"
-
-# ─────────────────────────────────────────────────────────────
-# ÉTAPE 6 – Génération des clés JWT
-# ─────────────────────────────────────────────────────────────
-section "Étape 6/9 – Génération des clés JWT"
-
-info "Génération des clés JWT pour Auth Service..."
-docker compose exec -T auth-service php bin/console \
-    lexik:jwt:generate-keypair --overwrite --no-interaction
-info "Clés JWT générées ✅"
-
-# ─────────────────────────────────────────────────────────────
-# ÉTAPE 7 – Migrations de base de données
-# ─────────────────────────────────────────────────────────────
-section "Étape 7/9 – Migrations de base de données"
-
-# ── Symfony Migrations ────────────────────────────────────────
-
-info "Migrations Auth Service..."
-docker compose exec -T auth-service php bin/console \
-    doctrine:migrations:migrate --no-interaction --allow-no-migration
-info "Auth Service – migrations OK ✅"
-
-info "Migrations User Service..."
-docker compose exec -T user-service php bin/console \
-    doctrine:migrations:migrate --no-interaction --allow-no-migration
-info "User Service – migrations OK ✅"
-
-info "Migrations Event Service..."
-docker compose exec -T event-service php bin/console \
-    doctrine:migrations:migrate --no-interaction --allow-no-migration
-info "Event Service – migrations OK ✅"
-
-# ── Prisma Migrations ─────────────────────────────────────────
-
-info "Migrations Ticket Service (Prisma)..."
-docker compose exec -T ticket-service npx prisma migrate deploy
-info "Ticket Service – migrations OK ✅"
-
-# ─────────────────────────────────────────────────────────────
-# ÉTAPE 8 – Build TypeScript et React
-# ─────────────────────────────────────────────────────────────
-section "Étape 8/9 – Build des projets"
-
-info "Build TypeScript – Ticket Service..."
-docker compose exec -T ticket-service npm run build
-info "Ticket Service – build OK ✅"
-
-info "Build TypeScript – Notification Service..."
-docker compose exec -T notification-service npm run build
-info "Notification Service – build OK ✅"
-
-info "Build TypeScript – API Gateway..."
-docker compose exec -T api-gateway npm run build
-info "API Gateway – build OK ✅"
-
-info "Build React – Frontend..."
-docker compose exec -T frontend npm run build
-info "Frontend – build OK ✅"
-
-# ─────────────────────────────────────────────────────────────
-# ÉTAPE 9 – Redémarrage final et vérification
-# ─────────────────────────────────────────────────────────────
-section "Étape 9/9 – Démarrage final et vérification"
-
-info "Redémarrage de tous les services..."
-docker compose up -d
-
-# Attendre que tous les services soient healthy
-wait_healthy "reservation_auth_service" 120
-wait_healthy "reservation_user_service" 120
-wait_healthy "reservation_event_service" 120
-wait_healthy "reservation_ticket_service" 120
-wait_healthy "reservation_notification_service" 120
-wait_healthy "reservation_api_gateway" 120
+# Attendre que tous les services applicatifs soient healthy
+# (leurs entrypoints installent les dépendances et migrent automatiquement)
+info "Attente de l'initialisation des services (peut prendre 2-3 minutes)..."
+wait_healthy "reservation_auth_service" 180
+wait_healthy "reservation_user_service" 180
+wait_healthy "reservation-saas-event-service-1" 180
+wait_healthy "reservation-saas-ticket-service-1-1" 180
+wait_healthy "reservation-saas-ticket-service-2-1" 180
+wait_healthy "reservation_notification_service" 180
+wait_healthy "reservation_api_gateway" 180
+wait_healthy "reservation_frontend" 60
 wait_healthy "reservation_nginx" 60
 
 info "Vérification des endpoints /health..."
@@ -386,13 +293,11 @@ check_health "User Service"        "http://localhost/api/users/health"
 check_health "Event Service"       "http://localhost/api/events/health"
 check_health "Ticket Service"      "http://localhost/api/tickets/health"
 
-# ─────────────────────────────────────────────────────────────
 # RÉSUMÉ FINAL
-# ─────────────────────────────────────────────────────────────
 echo ""
-echo -e "${GREEN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+echo -e "${GREEN}---------------------------------------------------${NC}"
 echo -e "${GREEN} ✅  Installation terminée avec succès !${NC}"
-echo -e "${GREEN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+echo -e "${GREEN}---------------------------------------------------${NC}"
 echo ""
 echo "  🌐 Application       : http://localhost"
 echo "  🔐 Auth Service      : http://localhost/api/auth"
@@ -409,6 +314,7 @@ echo ""
 echo "  Commandes utiles :"
 echo "  make up      – Démarrer les containers"
 echo "  make down    – Arrêter les containers"
+echo "  make clean    – Tout nettoyer (containers + volumes)"
 echo "  make logs    – Voir les logs"
 echo "  make test    – Lancer les tests"
 echo "  make ps      – État des containers"

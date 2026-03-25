@@ -1,0 +1,48 @@
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+enum TicketStatus {
+  ACTIVE
+  CANCELLED
+  USED
+}
+
+enum PaymentStatus {
+  PENDING
+  COMPLETED
+  FAILED
+}
+
+model Ticket {
+  id            String        @id @default(uuid())
+  ticketNumber  String        @unique
+  eventId       String
+  userId        String
+  eventTitle    String
+  eventDate     DateTime
+  venue         String
+  pricePaid     Decimal       @db.Decimal(10, 2)
+  paymentMethod String        @default("CARD")
+  paymentStatus PaymentStatus @default(COMPLETED)
+  status        TicketStatus  @default(ACTIVE)
+  purchaseDate  DateTime      @default(now())
+  transactionId String?
+  paymentLogs   PaymentLog[]
+}
+
+model PaymentLog {
+  id          String   @id @default(uuid())
+  ticketId    String
+  userId      String
+  amount      Decimal  @db.Decimal(10, 2)
+  status      String   // SUCCESS | FAILURE
+  cardLast4   String?
+  processedAt DateTime @default(now())
+  ticket      Ticket   @relation(fields: [ticketId], references: [id])
+}

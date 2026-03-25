@@ -1,0 +1,74 @@
+Warning: The allowCypressEnv configuration option is enabled. This allows any browser code to read values from Cypress.env(). This is insecure and will be removed in a future major version.
+
+1. Replace Cypress.env() calls with cy.env() (for sensitive values) or Cypress.expose() (for public configuration)
+2. Set allowCypressEnv: false in your Cypress configuration to disable Cypress.env()
+
+Learn more: https://on.cypress.io/cypress-env-migration
+
+
+========================
+
+  (Run Starting)
+
+  ┌────────────────────────────────────────────────────────────────────────────────────────────────┐
+  │ Cypress:        15.12.0                                                                        │
+  │ Browser:        Electron 138 (headless)                                                        │
+  │ Node Version:   v24.14.0 (/Users/abdoulayefofana/.nvm/versions/node/v24.14.0/bin/node)         │
+  │ Specs:          1 found (02-event-creator.cy.ts)                                               │
+  │ Searched:       cypress/e2e/02-event-creator.cy.ts                                             │
+  └────────────────────────────────────────────────────────────────────────────────────────────────┘
+
+
+────────────────────────────────────────────────────────────────────────────────────────────────────
+                                                                                                    
+  Running:  02-event-creator.cy.ts                                                          (1 of 1)
+
+
+  Event Creator Journey
+    1) should allow an organizer to register, login, and create an event
+
+
+  0 passing (8s)
+  1 failing
+
+  1) Event Creator Journey
+       should allow an organizer to register, login, and create an event:
+     AssertionError: Timed out retrying after 4000ms: Expected to find content: 'Créer mon premier événement' within the selector: 'button' but never did.
+      at Context.eval (webpack://frontend_tmp/./cypress/e2e/02-event-creator.cy.ts:36:7)
+
+
+
+
+  (Results)
+
+  ┌────────────────────────────────────────────────────────────────────────────────────────────────┐
+  │ Tests:        1                                                                                │
+  │ Passing:      0                                                                                │
+  │ Failing:      1                                                                                │
+  │ Pending:      0                                                                                │
+  │ Skipped:      0                                                                                │
+  │ Screenshots:  1                                                                                │
+  │ Video:        false                                                                            │
+  │ Duration:     8 seconds                                                                        │
+  │ Spec Ran:     02-event-creator.cy.ts                                                           │
+  └────────────────────────────────────────────────────────────────────────────────────────────────┘
+
+
+  (Screenshots)
+
+  -  /Users/abdoulayefofana/Desktop/reservation-saas/frontend/cypress/screenshots/02-    (2560x1440)
+     event-creator.cy.ts/Event Creator Journey -- should allow an organizer to regist               
+     er, login, and create an event (failed).png                                                    
+
+
+========================
+
+  (Run Finished)
+
+
+       Spec                                              Tests  Passing  Failing  Pending  Skipped  
+  ┌────────────────────────────────────────────────────────────────────────────────────────────────┐
+  │ ✖  02-event-creator.cy.ts                   00:08        1        -        1        -        - │
+  └────────────────────────────────────────────────────────────────────────────────────────────────┘
+    ✖  1 of 1 failed (100%)                     00:08        1        -        1        -        -  
+

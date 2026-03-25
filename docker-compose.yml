@@ -10,244 +10,244 @@
 
 services:
 
-  # ─────────────────────────────────────────────────────────────
   # BASES DE DONNÉES – 4 instances PostgreSQL isolées
   # Réseau : backend_network uniquement
-  # ─────────────────────────────────────────────────────────────
 
-  auth-db:
+  auth-db: # Service de Base de Données pour l'Authentification
+    image: postgres:16-alpine 
+    container_name: reservation_auth_db 
+    restart: unless-stopped # Redémarrage automatique en cas de crash
+    environment: 
+      POSTGRES_USER: ${AUTH_DB_USER} 
+      POSTGRES_PASSWORD: ${AUTH_DB_PASSWORD} 
+      POSTGRES_DB: ${AUTH_DB_NAME} 
+    volumes: 
+      - auth_db_data:/var/lib/postgresql/data # Stockage des données PostgreSQL sur l'hôte
+    ports: 
+      - "5432:5432" # Port hôte : Port container (5432 par défaut)
+    networks: 
+      - backend_network 
+    healthcheck: # Vérification automatique de l'état du service
+      test: ["CMD-SHELL", "pg_isready -U ${AUTH_DB_USER} -d ${AUTH_DB_NAME}"] 
+      interval: 10s # Fréquence du test (toutes les 10 secondes)
+      timeout: 5s # Temps d'attente max pour le test
+      retries: 5 
+      start_period: 10s 
+
+  user-db: # Service de Base de Données pour les Profils Utilisateurs
     image: postgres:16-alpine
-    container_name: reservation_auth_db
-    restart: unless-stopped
+    container_name: reservation_user_db 
+    restart: unless-stopped 
     environment:
-      POSTGRES_USER: ${AUTH_DB_USER}
-      POSTGRES_PASSWORD: ${AUTH_DB_PASSWORD}
-      POSTGRES_DB: ${AUTH_DB_NAME}
-    volumes:
-      - auth_db_data:/var/lib/postgresql/data
-    ports:
-      - "5432:5432"
+      POSTGRES_USER: ${USER_DB_USER} 
+      POSTGRES_PASSWORD: ${USER_DB_PASSWORD} 
+      POSTGRES_DB: ${USER_DB_NAME} 
+    volumes: 
+      - user_db_data:/var/lib/postgresql/data 
+    ports: 
+      - "5433:5432" # Port hôte 5433 mappé vers port 5432 du container
     networks:
-      - backend_network
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${AUTH_DB_USER} -d ${AUTH_DB_NAME}"]
+      - backend_network 
+    healthcheck: # Vérification automatique de l'état du service
+      test: ["CMD-SHELL", "pg_isready -U ${USER_DB_USER} -d ${USER_DB_NAME}"] 
       interval: 10s
-      timeout: 5s
-      retries: 5
-      start_period: 10s
+      timeout: 5s 
+      retries: 5 
+      start_period: 10s 
 
-  user-db:
-    image: postgres:16-alpine
-    container_name: reservation_user_db
-    restart: unless-stopped
+  event-db: # Service de Base de Données pour les Événements
+    image: postgres:16-alpine 
+    container_name: reservation_event_db 
+    restart: unless-stopped # Redémarrage automatique en cas de crash
     environment:
-      POSTGRES_USER: ${USER_DB_USER}
-      POSTGRES_PASSWORD: ${USER_DB_PASSWORD}
-      POSTGRES_DB: ${USER_DB_NAME}
-    volumes:
-      - user_db_data:/var/lib/postgresql/data
-    ports:
-      - "5433:5432"
-    networks:
-      - backend_network
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${USER_DB_USER} -d ${USER_DB_NAME}"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-      start_period: 10s
-
-  event-db:
-    image: postgres:16-alpine
-    container_name: reservation_event_db
-    restart: unless-stopped
-    environment:
-      POSTGRES_USER: ${EVENT_DB_USER}
+      POSTGRES_USER: ${EVENT_DB_USER} 
       POSTGRES_PASSWORD: ${EVENT_DB_PASSWORD}
-      POSTGRES_DB: ${EVENT_DB_NAME}
+      POSTGRES_DB: ${EVENT_DB_NAME} 
     volumes:
-      - event_db_data:/var/lib/postgresql/data
-    ports:
-      - "5434:5432"
+      - event_db_data:/var/lib/postgresql/data # Stockage des données PostgreSQL sur l'hôte
+    ports: 
+      - "5434:5432" # Port hôte 5434 mappé vers port 5432 du container
     networks:
-      - backend_network
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${EVENT_DB_USER} -d ${EVENT_DB_NAME}"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
+      - backend_network 
+    healthcheck: # Vérification automatique de l'état du service
+      test: ["CMD-SHELL", "pg_isready -U ${EVENT_DB_USER} -d ${EVENT_DB_NAME}"] 
+      interval: 10s 
+      timeout: 5s 
+      retries: 5 
       start_period: 10s
 
-  ticket-db:
-    image: postgres:16-alpine
+  ticket-db: # Service de Base de Données pour les Billets/Achats
+    image: postgres:16-alpine 
     container_name: reservation_ticket_db
-    restart: unless-stopped
-    environment:
-      POSTGRES_USER: ${TICKET_DB_USER}
-      POSTGRES_PASSWORD: ${TICKET_DB_PASSWORD}
+    restart: unless-stopped 
+    environment: 
+      POSTGRES_USER: ${TICKET_DB_USER} 
+      POSTGRES_PASSWORD: ${TICKET_DB_PASSWORD} 
       POSTGRES_DB: ${TICKET_DB_NAME}
-    volumes:
-      - ticket_db_data:/var/lib/postgresql/data
-    ports:
-      - "5435:5432"
-    networks:
-      - backend_network
+    volumes: 
+      - ticket_db_data:/var/lib/postgresql/data 
+    ports: 
+      - "5435:5432" # Port hôte 5435 mappé vers port 5432 du container
+    networks: 
+      - backend_network 
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${TICKET_DB_USER} -d ${TICKET_DB_NAME}"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
+      test: ["CMD-SHELL", "pg_isready -U ${TICKET_DB_USER} -d ${TICKET_DB_NAME}"] 
+      interval: 10s 
+      timeout: 5s 
+      retries: 5 
       start_period: 10s
 
-  # ─────────────────────────────────────────────────────────────
   # RABBITMQ – Broker de messages asynchrones
   # Réseau : backend_network uniquement
-  # ─────────────────────────────────────────────────────────────
-  rabbitmq:
-    image: rabbitmq:3-management
-    container_name: reservation_rabbitmq
-    restart: unless-stopped
-    environment:
-      RABBITMQ_DEFAULT_USER: ${RABBITMQ_USER}
-      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASSWORD}
+  rabbitmq: # Agent de Message (Queue) pour l'Asynchrone
+    image: rabbitmq:3-management 
+    container_name: reservation_rabbitmq 
+    restart: unless-stopped # Redémarrage automatique en cas d'echec
+    environment: 
+      RABBITMQ_DEFAULT_USER: ${RABBITMQ_USER} 
+      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASSWORD} 
       RABBITMQ_DEFAULT_VHOST: ${RABBITMQ_VHOST}
-    volumes:
-      - rabbitmq_data:/var/lib/rabbitmq
-    ports:
-      - "5672:5672"
-      - "15672:15672"
-    networks:
-      - backend_network
+    volumes: # Persistance des files d'attente
+      - rabbitmq_data:/var/lib/rabbitmq 
+    ports: 
+      - "5672:5672" # Port AMQP pour la communication entre services
+      - "15672:15672" # Port HTTP pour l'interface d'administration web
+    networks: 
+      - backend_network 
     healthcheck:
       test: ["CMD", "rabbitmq-diagnostics", "ping"]
-      interval: 15s
-      timeout: 10s
-      retries: 5
-      start_period: 30s
+      interval: 15s 
+      timeout: 10s 
+      retries: 5 
+      start_period: 30s 
 
-  # ─────────────────────────────────────────────────────────────
   # MICROSERVICES SYMFONY – Auth, User, Event
   # Volumes : code source monté depuis l'hôte
   # vendor/ persisté dans un volume nommé (installé par setup.sh)
   # Réseau : backend_network uniquement
-  # ─────────────────────────────────────────────────────────────
 
-  auth-service:
+  auth-service: # Service d'Authentification (Symfony/PHP)
     build:
-      context: ./services/auth-service
+      context: ./services/auth-service # Dossier contenant le code et Dockerfile
       dockerfile: Dockerfile
     container_name: reservation_auth_service
     restart: unless-stopped
     environment:
-      APP_ENV: ${APP_ENV:-prod}
+      APP_ENV: ${APP_ENV:-dev}
       DATABASE_URL: ${AUTH_DATABASE_URL}
       JWT_SECRET: ${JWT_SECRET}
+      JWT_PASSPHRASE: ${JWT_PASSPHRASE}
       JWT_TTL: ${JWT_TTL:-3600}
       JWT_REFRESH_TTL: ${JWT_REFRESH_TTL:-604800}
+      # Chemins absolus des clés RSA dans le container (volume auth_jwt monté sur /app/config/jwt)
+      # Nécessaires pour que LexikJWTAuthenticationBundle trouve les clés sur un nouveau clone
+      JWT_SECRET_KEY: /app/config/jwt/private.pem
+      JWT_PUBLIC_KEY: /app/config/jwt/public.pem
       USER_SERVICE_URL: ${USER_SERVICE_URL}
-    volumes:
-      # Monte le code source local dans le container
-      # Toute modification locale est immédiatement visible
-      - ./services/auth-service:/app
-      # Volume nommé pour vendor/ – évite d'écraser les dépendances
-      # installées par setup.sh avec le dossier local (vide)
-      - auth_vendor:/app/vendor
-      # Volume nommé pour les clés JWT générées par setup.sh
-      - auth_jwt:/app/config/jwt
-    depends_on:
-      auth-db:
-        condition: service_healthy
-    networks:
-      - backend_network
-    healthcheck:
-      test: ["CMD-SHELL", "wget -qO- http://localhost:8001/health || exit 1"]
-      interval: 15s
-      timeout: 5s
+      DEFAULT_URI: http://localhost:8001
+    volumes: 
+      - ./services/auth-service:/app # Code source local partagé pour le dev
+      - auth_vendor:/app/vendor # vendor/ isolé dans un volume dédié
+      - auth_jwt:/app/config/jwt # Clés RSA conservées entre les builds
+    ports: 
+      - "8001:8001" 
+    depends_on: 
+      auth-db: 
+        condition: service_healthy 
+    networks: 
+      - backend_network 
+    healthcheck: 
+      test: ["CMD-SHELL", "wget -qO- http://localhost:8001/health || exit 1"] # Vérifie la route /health
+      interval: 15s 
+      timeout: 5s 
       retries: 5
-      start_period: 60s
+      start_period: 60s 
 
-  user-service:
-    build:
-      context: ./services/user-service
-      dockerfile: Dockerfile
-    container_name: reservation_user_service
-    restart: unless-stopped
-    environment:
-      APP_ENV: ${APP_ENV:-prod}
-      DATABASE_URL: ${USER_DATABASE_URL}
-      JWT_SECRET: ${JWT_SECRET}
+  user-service: # Service de Gestion des Profils (Symfony/PHP)
+    build: 
+      context: ./services/user-service # Dossier du code
+      dockerfile: Dockerfile 
+    container_name: reservation_user_service 
+    restart: unless-stopped 
+    environment: 
+      APP_ENV: ${APP_ENV:-dev} 
+      DATABASE_URL: ${USER_DATABASE_URL} 
+      JWT_SECRET: ${JWT_SECRET} 
       TICKET_SERVICE_URL: ${TICKET_SERVICE_URL}
-    volumes:
-      # Monte le code source local dans le container
-      - ./services/user-service:/app
-      # Volume nommé pour vendor/
-      - user_vendor:/app/vendor
-    depends_on:
-      user-db:
-        condition: service_healthy
-    networks:
-      - backend_network
-    healthcheck:
-      test: ["CMD-SHELL", "wget -qO- http://localhost:8002/health || exit 1"]
-      interval: 15s
-      timeout: 5s
-      retries: 5
+      DEFAULT_URI: http://localhost:8002 
+    volumes: 
+      - ./services/user-service:/app # Code source local partagé
+      - user_vendor:/app/vendor # vendor/ isolé dans un volume dédié
+    ports: 
+      - "8002:8002" 
+    depends_on: 
+      user-db: 
+        condition: service_healthy 
+    networks: 
+      - backend_network 
+    healthcheck: 
+      test: ["CMD-SHELL", "wget -qO- http://localhost:8002/health || exit 1"] 
+      interval: 15s 
+      timeout: 5s 
+      retries: 5 
       start_period: 60s
 
-  event-service:
+  event-service: # Service de Gestion des Événements/Billetterie (Symfony/PHP)
     build:
-      context: ./services/event-service
+      context: ./services/event-service # Dossier du code
       dockerfile: Dockerfile
-    container_name: reservation_event_service
     restart: unless-stopped
     environment:
-      APP_ENV: ${APP_ENV:-prod}
+      APP_ENV: ${APP_ENV:-dev}
       DATABASE_URL: ${EVENT_DATABASE_URL}
       JWT_SECRET: ${JWT_SECRET}
-    volumes:
-      # Monte le code source local dans le container
-      - ./services/event-service:/app
-      # Volume nommé pour vendor/
-      - event_vendor:/app/vendor
-    depends_on:
-      event-db:
-        condition: service_healthy
-    networks:
-      - backend_network
-    healthcheck:
-      test: ["CMD-SHELL", "wget -qO- http://localhost:8003/health || exit 1"]
-      interval: 15s
+      TICKET_SERVICE_URL: ${TICKET_SERVICE_URL}
+      DEFAULT_URI: http://localhost:8003
+    volumes: 
+      - ./services/event-service:/app # Code source local partagé
+      - event_vendor:/app/vendor # vendor/ isolé dans un volume dédié
+    # Pas de ports exposés sur l'hôte : l'event-service est accédé uniquement
+    # via le réseau interne Docker (api-gateway → http://event-service:8003).
+    # Supprimer le binding hôte est indispensable pour le scaling horizontal :
+    # plusieurs instances ne peuvent pas partager le même port hôte (8003).
+    depends_on: 
+      event-db: 
+        condition: service_healthy 
+    networks: 
+      - backend_network 
+    healthcheck: 
+      test: ["CMD-SHELL", "wget -qO- http://localhost:8003/health || exit 1"] 
+      interval: 15s 
       timeout: 5s
-      retries: 5
-      start_period: 60s
+      retries: 5 
+      start_period: 60s 
 
-  # ─────────────────────────────────────────────────────────────
   # MICROSERVICES NODE.JS – Ticket, Notification
   # Volumes : code source monté depuis l'hôte
   # node_modules/ et dist/ persistés dans des volumes nommés
   # Réseau : backend_network uniquement
-  # ─────────────────────────────────────────────────────────────
 
-  ticket-service:
+  # LOAD BALANCING – Deux instances du ticket-service
+  # Round-Robin Pondéré géré par l'API Gateway : ticket-service-1 (weight=6), ticket-service-2 (weight=4)
+  # Sur 10 requêtes : 6 vers l'instance 1 (principale), 4 vers l'instance 2 (secondaire)
+
+  ticket-service-1: # Instance principale du Ticket Service (weight=6)
     build:
       context: ./services/ticket-service
       dockerfile: Dockerfile
-    container_name: reservation_ticket_service
     restart: unless-stopped
+    hostname: ticket-service-1
     environment:
-      NODE_ENV: ${APP_ENV:-production}
+      NODE_ENV: ${NODE_ENV:-development}
       PORT: ${TICKET_SERVICE_PORT:-8004}
       DATABASE_URL: ${TICKET_DATABASE_URL}
       JWT_SECRET: ${JWT_SECRET}
       RABBITMQ_URL: ${RABBITMQ_URL}
       EVENT_SERVICE_URL: ${EVENT_SERVICE_URL}
     volumes:
-      # Monte le code source local dans le container
       - ./services/ticket-service:/app
-      # Volume nommé pour node_modules/
-      - ticket_node_modules:/app/node_modules
-      # Volume nommé pour dist/ (build TypeScript)
-      - ticket_dist:/app/dist
+      - ticket1_node_modules:/app/node_modules
+      - ticket1_dist:/app/dist
     depends_on:
       ticket-db:
         condition: service_healthy
@@ -262,184 +262,205 @@ services:
       retries: 5
       start_period: 60s
 
-  notification-service:
+  ticket-service-2: # Instance secondaire du Ticket Service (weight=4)
     build:
-      context: ./services/notification-service
+      context: ./services/ticket-service
       dockerfile: Dockerfile
-    container_name: reservation_notification_service
     restart: unless-stopped
+    hostname: ticket-service-2
     environment:
-      NODE_ENV: ${APP_ENV:-production}
-      PORT: ${NOTIFICATION_SERVICE_PORT:-8005}
+      NODE_ENV: ${NODE_ENV:-development}
+      PORT: ${TICKET_SERVICE_PORT:-8004}
+      DATABASE_URL: ${TICKET_DATABASE_URL}
+      JWT_SECRET: ${JWT_SECRET}
       RABBITMQ_URL: ${RABBITMQ_URL}
+      EVENT_SERVICE_URL: ${EVENT_SERVICE_URL}
     volumes:
-      # Monte le code source local dans le container
-      - ./services/notification-service:/app
-      # Volume nommé pour node_modules/
-      - notification_node_modules:/app/node_modules
-      # Volume nommé pour dist/ (build TypeScript)
-      - notification_dist:/app/dist
+      - ./services/ticket-service:/app
+      - ticket2_node_modules:/app/node_modules
+      - ticket2_dist:/app/dist
     depends_on:
+      ticket-db:
+        condition: service_healthy
       rabbitmq:
         condition: service_healthy
     networks:
       - backend_network
     healthcheck:
-      test: ["CMD-SHELL", "wget -qO- http://localhost:8005/health || exit 1"]
+      test: ["CMD-SHELL", "wget -qO- http://localhost:8004/health || exit 1"]
       interval: 15s
       timeout: 5s
       retries: 5
       start_period: 60s
 
-  # ─────────────────────────────────────────────────────────────
-  # API GATEWAY – Le seul service sur les DEUX réseaux
-  # Pont sécurisé entre frontend et microservices
-  # ─────────────────────────────────────────────────────────────
-  api-gateway:
-    build:
-      context: ./services/api-gateway
+  notification-service: # Service de Notifications (Node.js/TypeScript)
+    build: 
+      context: ./services/notification-service # Dossier du code
       dockerfile: Dockerfile
-    container_name: reservation_api_gateway
-    restart: unless-stopped
+    container_name: reservation_notification_service 
+    restart: unless-stopped 
     environment:
-      NODE_ENV: ${APP_ENV:-production}
-      PORT: ${API_GATEWAY_PORT:-8000}
-      JWT_SECRET: ${JWT_SECRET}
-      AUTH_SERVICE_URL: ${AUTH_SERVICE_URL}
-      USER_SERVICE_URL: ${USER_SERVICE_URL}
-      EVENT_SERVICE_URL: ${EVENT_SERVICE_URL}
-      TICKET_SERVICE_URL: ${TICKET_SERVICE_URL}
-      CORS_ALLOWED_ORIGINS: ${CORS_ALLOWED_ORIGINS}
-    volumes:
-      # Monte le code source local dans le container
-      - ./services/api-gateway:/app
-      # Volume nommé pour node_modules/
-      - gateway_node_modules:/app/node_modules
-      # Volume nommé pour dist/ (build TypeScript)
-      - gateway_dist:/app/dist
-    depends_on:
-      auth-service:
-        condition: service_healthy
-      user-service:
-        condition: service_healthy
-      event-service:
-        condition: service_healthy
-      ticket-service:
-        condition: service_healthy
+      NODE_ENV: ${NODE_ENV:-development}
+      PORT: ${NOTIFICATION_SERVICE_PORT:-8005}
+      RABBITMQ_URL: ${RABBITMQ_URL} # URL de connexion à RabbitMQ
+      USER_SERVICE_URL: ${USER_SERVICE_URL} # URL pour récupérer les emails
+    volumes: 
+      - ./services/notification-service:/app # Code source local partagé
+      - notification_node_modules:/app/node_modules # Dépendances isolées
+      - notification_dist:/app/dist # Build TypeScript isolé
+    depends_on: 
+      rabbitmq: 
+        condition: service_healthy 
     networks:
-      - frontend_network
       - backend_network
     healthcheck:
-      test: ["CMD-SHELL", "wget -qO- http://localhost:8000/health || exit 1"]
-      interval: 15s
+      test: ["CMD-SHELL", "wget -qO- http://localhost:8005/health || exit 1"] 
+      interval: 15s 
       timeout: 5s
       retries: 5
-      start_period: 60s
+      start_period: 60s 
 
-  # ─────────────────────────────────────────────────────────────
+  # API GATEWAY – Le seul service sur les DEUX réseaux
+  # Pont sécurisé entre frontend et microservices
+  api-gateway: # Porte d'Entrée API (Node.js/TypeScript)
+    build: 
+      context: ./services/api-gateway # Dossier du code
+      dockerfile: Dockerfile 
+    container_name: reservation_api_gateway 
+    restart: unless-stopped 
+    environment: 
+      NODE_ENV: ${NODE_ENV:-development}
+      PORT: ${API_GATEWAY_PORT:-8000} 
+      JWT_SECRET: ${JWT_SECRET} 
+      JWT_PUBLIC_KEY: /app/keys/public.pem 
+      AUTH_SERVICE_URL: ${AUTH_SERVICE_URL} 
+      USER_SERVICE_URL: ${USER_SERVICE_URL} 
+      EVENT_SERVICE_URL: ${EVENT_SERVICE_URL} # URL de l'Event Service
+      TICKET_SERVICE_URL_1: ${TICKET_SERVICE_URL_1} # Instance principale (weight=6)
+      TICKET_SERVICE_URL_2: ${TICKET_SERVICE_URL_2} # Instance secondaire (weight=4)
+      CORS_ALLOWED_ORIGINS: ${CORS_ALLOWED_ORIGINS} # Origines autorisées (CORS)
+    volumes: 
+      - ./services/api-gateway:/app # Code source local partagé
+      - gateway_node_modules:/app/node_modules # Dépendances isolées
+      - gateway_dist:/app/dist # Build TypeScript isolé
+      - auth_jwt:/app/keys:ro # Clés RSA en lecture seule (:ro)
+    ports:
+      - "8000:8000" 
+    depends_on: 
+      auth-service: 
+        condition: service_healthy 
+      user-service: 
+        condition: service_healthy 
+      event-service: 
+        condition: service_healthy 
+      ticket-service-1:
+        condition: service_healthy
+      ticket-service-2:
+        condition: service_healthy
+    networks: # Raccordement aux deux réseaux
+      - frontend_network # Côté public (Nginx)
+      - backend_network # Côté privé (Services)
+    healthcheck: 
+      test: ["CMD-SHELL", "wget -qO- http://localhost:8000/health || exit 1"] # Vérifie la route /health
+      interval: 15s 
+      timeout: 5s 
+      retries: 5 
+      start_period: 60s 
+
   # NGINX – Load Balancer
   # Réseau : frontend_network uniquement
   # Seul port exposé sur l'hôte (80)
-  # ─────────────────────────────────────────────────────────────
-  nginx:
-    build:
-      context: ./nginx
-      dockerfile: Dockerfile
-    container_name: reservation_nginx
-    restart: unless-stopped
+  nginx: 
+    build: 
+      context: ./nginx # Dossier contenant le Dockerfile et nginx.conf
+      dockerfile: Dockerfile 
+    container_name: reservation_nginx 
+    restart: unless-stopped 
     ports:
       - "80:80"
-    depends_on:
-      api-gateway:
+    depends_on: 
+      api-gateway: 
         condition: service_healthy
-    networks:
-      - frontend_network
-    healthcheck:
-      test: ["CMD-SHELL", "wget -qO- http://localhost/health || exit 1"]
-      interval: 10s
-      timeout: 5s
+      frontend: 
+        condition: service_healthy 
+    networks: 
+      - frontend_network 
+    healthcheck: 
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1/health || exit 1"] # Vérifie la route /health de Nginx
+      interval: 10s 
+      timeout: 5s 
       retries: 3
-      start_period: 10s
+      start_period: 10s 
 
-  # ─────────────────────────────────────────────────────────────
   # FRONTEND – React 18 + TypeScript
   # Réseau : frontend_network uniquement
-  # ─────────────────────────────────────────────────────────────
-  frontend:
-    build:
-      context: ./frontend
-      dockerfile: Dockerfile
-    container_name: reservation_frontend
-    restart: unless-stopped
-    volumes:
-      # Monte le code source local dans le container
-      - ./frontend:/app
-      # Volume nommé pour node_modules/
-      - frontend_node_modules:/app/node_modules
-      # Volume nommé pour dist/ (build React)
-      - frontend_dist:/app/dist
-    depends_on:
-      - nginx
-    networks:
-      - frontend_network
+  frontend: # Interface Utilisateur (React / Vite)
+    build: 
+      context: ./frontend # Dossier contenant l'application React
+      dockerfile: Dockerfile 
+    container_name: reservation_frontend 
+    restart: unless-stopped 
+    # Pas de volumes — les fichiers React sont compilés en statique dans l'image
+    networks: 
+      - frontend_network 
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:3000 || exit 1"] # Vérifie que le port 3000 répond (Nginx)
+      interval: 10s 
+      timeout: 5s 
+      retries: 3 
+      start_period: 30s 
 
-# ─────────────────────────────────────────────────────────────
 # RÉSEAUX – Isolation sécurisée par couche
-# frontend_network : Nginx ↔ API Gateway ↔ Frontend
-# backend_network  : API Gateway ↔ Services ↔ BDD ↔ RabbitMQ
-# ─────────────────────────────────────────────────────────────
-networks:
-  frontend_network:
-    name: reservation_frontend_network
-    driver: bridge
-  backend_network:
-    name: reservation_backend_network
-    driver: bridge
+networks: 
+  frontend_network: # Réseau accessible depuis l'extérieur (Nginx, Gateway, Front)
+    name: reservation_frontend_network 
+    driver: bridge 
+  backend_network: # Réseau privé (Gateway, Microservices, BDD)
+    name: reservation_backend_network 
+    driver: bridge 
 
-# ─────────────────────────────────────────────────────────────
-# VOLUMES – Persistance des données et des dépendances
-# ─────────────────────────────────────────────────────────────
-volumes:
-  # Données PostgreSQL
-  auth_db_data:
+# VOLUMES – Persistance des données et des dépendances entre Redémarrages
+volumes: 
+  # Données PostgreSQL (Bases de Données physiques)
+  auth_db_data: 
     name: reservation_auth_db_data
-  user_db_data:
+  user_db_data: 
     name: reservation_user_db_data
-  event_db_data:
+  event_db_data: 
     name: reservation_event_db_data
   ticket_db_data:
     name: reservation_ticket_db_data
 
-  # Données RabbitMQ
-  rabbitmq_data:
+  # Données RabbitMQ (Files d'attente persistantes)
+  rabbitmq_data: 
     name: reservation_rabbitmq_data
 
-  # Dépendances Symfony (vendor/)
-  auth_vendor:
+  # Dépendances Symfony (Dossiers vendor/ partagés)
+  auth_vendor: # Volume vendor/ Auth
     name: reservation_auth_vendor
-  user_vendor:
+  user_vendor: 
     name: reservation_user_vendor
-  event_vendor:
+  event_vendor: 
     name: reservation_event_vendor
 
-  # Clés JWT Auth Service
-  auth_jwt:
+  # Clés JWT Auth Service (Certificats RSA)
+  auth_jwt: # Volume pour transporter les clés publiques
     name: reservation_auth_jwt
 
-  # Dépendances Node.js (node_modules/ + dist/)
-  ticket_node_modules:
-    name: reservation_ticket_node_modules
-  ticket_dist:
-    name: reservation_ticket_dist
+  # Dépendances Node.js (node_modules/ et builds dist/)
+  ticket1_node_modules: # node_modules Ticket instance 1
+    name: reservation_ticket1_node_modules
+  ticket1_dist: # dist/ Ticket instance 1
+    name: reservation_ticket1_dist
+  ticket2_node_modules: # node_modules Ticket instance 2
+    name: reservation_ticket2_node_modules
+  ticket2_dist: # dist/ Ticket instance 2
+    name: reservation_ticket2_dist
   notification_node_modules:
     name: reservation_notification_node_modules
-  notification_dist:
+  notification_dist: 
     name: reservation_notification_dist
-  gateway_node_modules:
+  gateway_node_modules: 
     name: reservation_gateway_node_modules
-  gateway_dist:
+  gateway_dist: 
     name: reservation_gateway_dist
-  frontend_node_modules:
-    name: reservation_frontend_node_modules
-  frontend_dist:
-    name: reservation_frontend_dist

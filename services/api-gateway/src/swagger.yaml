@@ -1,0 +1,304 @@
+openapi: 3.0.0
+info:
+  title: API Gateway
+  version: 1.0.0
+  description: >
+    Point d'entrée unique du SaaS de réservation.
+    Valide les JWT, applique le rate-limiting et proxifie vers les microservices.
+servers:
+  - url: http://localhost:8000
+    description: API Gateway (développement)
+
+tags:
+  - name: Auth
+    description: Inscription, connexion, refresh token
+  - name: Events
+    description: Catalogue des événements
+  - name: Users
+    description: Gestion des profils utilisateurs
+  - name: Tickets
+    description: Achat et gestion des billets
+
+components:
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+  schemas:
+    ErrorResponse:
+      type: object
+      properties:
+        error:
+          type: string
+        message:
+          type: string
+
+paths:
+  /health:
+    get:
+      summary: Health check de la gateway
+      tags: [Auth]
+      responses:
+        '200':
+          description: Gateway opérationnelle
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: ok
+                  service:
+                    type: string
+                    example: api-gateway
+
+  /api/auth/register:
+    post:
+      summary: Inscription d'un nouvel utilisateur
+      tags: [Auth]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email, password]
+              properties:
+                email:
+                  type: string
+                  format: email
+                  example: user@example.com
+                password:
+                  type: string
+                  format: password
+                  example: "Str0ng!Pass"
+      responses:
+        '201':
+          description: Utilisateur créé
+        '400':
+          description: Données invalides
+
+  /api/auth/login:
+    post:
+      summary: Connexion et obtention du JWT
+      tags: [Auth]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email, password]
+              properties:
+                email:
+                  type: string
+                  format: email
+                  example: user@example.com
+                password:
+                  type: string
+                  format: password
+                  example: "Str0ng!Pass"
+      responses:
+        '200':
+          description: JWT retourné
+        '401':
+          description: Identifiants invalides
+
+  /api/auth/refresh:
+    post:
+      summary: Renouvellement du JWT
+      tags: [Auth]
+      responses:
+        '200':
+          description: Nouveau JWT retourné
+        '401':
+          description: Refresh token invalide
+
+  /api/auth/logout:
+    post:
+      summary: Déconnexion
+      tags: [Auth]
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          description: Déconnexion réussie
+
+  /api/auth/me:
+    get:
+      summary: Profil de l'utilisateur connecté
+      tags: [Auth]
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          description: Profil retourné
+        '401':
+          description: Non authentifié
+
+  /api/events:
+    get:
+      summary: Liste des événements publiés (public)
+      tags: [Events]
+      responses:
+        '200':
+          description: Liste des événements
+    post:
+      summary: Créer un événement (JWT requis)
+      tags: [Events]
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+      responses:
+        '201':
+          description: Événement créé
+        '401':
+          description: Non authentifié
+
+  /api/events/{id}:
+    get:
+      summary: Détail d'un événement (public)
+      tags: [Events]
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Événement retourné
+        '404':
+          description: Introuvable
+    put:
+      summary: Modifier un événement (JWT requis)
+      tags: [Events]
+      security:
+        - BearerAuth: []
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+      responses:
+        '200':
+          description: Événement mis à jour
+        '401':
+          description: Non authentifié
+    delete:
+      summary: Supprimer un événement (JWT requis)
+      tags: [Events]
+      security:
+        - BearerAuth: []
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '204':
+          description: Supprimé
+        '401':
+          description: Non authentifié
+
+  /api/users/{id}:
+    get:
+      summary: Profil d'un utilisateur (JWT requis)
+      tags: [Users]
+      security:
+        - BearerAuth: []
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Profil retourné
+        '401':
+          description: Non authentifié
+    put:
+      summary: Modifier un profil utilisateur (JWT requis)
+      tags: [Users]
+      security:
+        - BearerAuth: []
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+      responses:
+        '200':
+          description: Profil mis à jour
+        '401':
+          description: Non authentifié
+
+  /api/tickets:
+    get:
+      summary: Liste des billets de l'utilisateur (JWT requis)
+      tags: [Tickets]
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          description: Liste des billets
+        '401':
+          description: Non authentifié
+
+  /api/tickets/purchase:
+    post:
+      summary: Acheter un billet (JWT requis)
+      tags: [Tickets]
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [eventId, quantity]
+              properties:
+                eventId:
+                  type: string
+                  format: uuid
+                  example: "b2c3d4e5-f6a7-8901-bcde-f12345678901"
+                quantity:
+                  type: integer
+                  minimum: 1
+                  example: 1
+      responses:
+        '201':
+          description: Billet acheté
+        '401':
+          description: Non authentifié
+        '409':
+          description: Plus de places disponibles

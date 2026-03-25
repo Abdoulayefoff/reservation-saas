@@ -1,0 +1,22 @@
+# nelmio_api_doc.yaml – Configuration Swagger/OpenAPI pour Auth Service
+# Documentation interactive accessible à /api/doc
+
+nelmio_api_doc:
+    documentation:
+        info:
+            title: "Auth Service API"
+            description: "Service d'authentification – JWT, inscription, connexion"
+            version: "1.0.0"
+        components:
+            securitySchemes:
+                Bearer:
+                    type: http
+                    scheme: bearer
+                    bearerFormat: JWT
+                    description: "Token JWT obtenu via POST /auth/login"
+        security:
+            - Bearer: []
+    areas:
+        path_patterns:
+            - ^/auth
+            - ^/health

@@ -8,11 +8,9 @@
 # Cela permet à n'importe qui de cloner le repo et lancer ./setup.sh
 # sans avoir PHP ou Composer installés sur sa machine.
 
-# ─────────────────────────────────────────────────────────────
 # STAGE 1 : builder
 # Compile les extensions PHP natives nécessaires
-# ─────────────────────────────────────────────────────────────
-FROM php:8.3-cli AS builder
+FROM php:8.4-cli AS builder
 
 # Installation des headers de compilation et des extensions PHP
 # libpq-dev  : headers PostgreSQL pour compiler pdo_pgsql
@@ -32,11 +30,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
 
-# ─────────────────────────────────────────────────────────────
 # STAGE 2 : runtime
 # Image finale légère – uniquement les libs runtime
-# ─────────────────────────────────────────────────────────────
-FROM php:8.3-fpm-alpine AS runtime
+FROM php:8.4-fpm-alpine AS runtime
 
 # Installation des librairies runtime (sans headers de compilation)
 # .build-deps : groupe temporaire supprimé après installation des extensions

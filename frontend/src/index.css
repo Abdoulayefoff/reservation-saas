@@ -1,0 +1,144 @@
+/* IMPORTATION DES COUCHES TAILWIND */
+@tailwind base;       /* Styles de base / Resets */
+@tailwind components; /* Classes de composants (ex: .btn) */
+@tailwind utilities;  /* Classes utilitaires atomiques */
+
+/* COUCHE BASE (Styles globaux navigateurs) */
+@layer base {
+  html {
+    background-color: #F7F3EE; /* Fond ivoire clair */
+    color: #140C07; /* Couleur texte noir chaud */
+    font-family: 'Syne', system-ui, sans-serif; /* Police d'accentuation principale */
+    -webkit-font-smoothing: antialiased; /* Lissage police iOS */
+    -moz-osx-font-smoothing: grayscale; /* Lissage police Firefox */
+  }
+
+  body {
+    background-color: #F7F3EE; /* Rappel du fond */
+  }
+
+  /* Personnalisation de la Scrollbar (Barre de défilement) */
+  ::-webkit-scrollbar { width: 5px; height: 5px; } /* Taille de la barre */
+  ::-webkit-scrollbar-track  { background: #F2EDE5; } /* Fond de piste */
+  ::-webkit-scrollbar-thumb  { background: #CDBFA8; border-radius: 2px; } /* Curseur */
+  ::-webkit-scrollbar-thumb:hover { background: #E8A730; } /* Curseur au survol (Ambre) */
+
+  /* Couleur de surbrillance lors de la sélection de texte */
+  ::selection {
+    background: rgba(232, 167, 48, 0.20); /* Fond jaune transparent */
+    color: #140C07;
+  }
+}
+
+/* COUCHE COMPONENTS (Définitions de classes sur-mesure) */
+@layer components {
+
+  /* BOUTONS */
+  /* Bouton Plein "Soleil" (Principal) */
+  .btn-sol {
+    @apply inline-flex items-center justify-center gap-2 px-5 py-2.5
+           bg-sol text-noir-950 font-sans font-semibold text-sm
+           hover:bg-sol-300 active:bg-sol-600
+           transition-all duration-200 tracking-wide rounded-sm
+           disabled:opacity-40 disabled:cursor-not-allowed;
+  }
+
+  /* Bouton Fantôme (Bordure) */
+  .btn-ghost {
+    @apply inline-flex items-center justify-center gap-2 px-5 py-2.5
+           border border-noir-600 text-noir-200 font-sans font-semibold text-sm
+           hover:border-sol hover:text-sol
+           transition-all duration-200 rounded-sm
+           disabled:opacity-40 disabled:cursor-not-allowed;
+  }
+
+  /* Bouton Fantôme Petite Taille (Small) */
+  .btn-ghost-sm {
+    @apply inline-flex items-center justify-center gap-1.5 px-3 py-1.5
+           border border-noir-600 text-noir-200 font-sans font-semibold text-xs
+           hover:border-sol hover:text-sol
+           transition-all duration-200 rounded-sm
+           disabled:opacity-40 disabled:cursor-not-allowed;
+  }
+
+  /* Bouton Danger (Rouge) */
+  .btn-danger-ghost {
+    @apply inline-flex items-center justify-center gap-1.5 px-3 py-1.5
+           border border-red-300 text-red-600 font-sans font-semibold text-xs
+           hover:border-red-500 hover:text-red-700
+           transition-all duration-200 rounded-sm
+           disabled:opacity-40 disabled:cursor-not-allowed;
+  }
+
+  /* CHAMPS DE SAISIE (INPUTS) */
+  .input-dark {
+    @apply w-full bg-white border border-noir-650 rounded-sm
+           px-4 py-3 text-noir-50 placeholder-noir-400
+           font-sans text-sm
+           focus:outline-none focus:border-sol focus:ring-1 focus:ring-sol/25
+           transition-colors duration-200
+           disabled:opacity-50 disabled:cursor-not-allowed;
+  }
+
+  /* CARTES (CARDS) */
+  .card-dark {
+    @apply bg-white border border-noir-700 rounded-sm;
+  }
+
+  /* LIBELLÉS (LABELS) */
+  /* Texte Mono Jaune style sous-titre */
+  .label-sol {
+    @apply text-sol font-mono text-[10px] uppercase tracking-[0.2em];
+  }
+
+  /* Texte Mono Gris discret */
+  .label-dim {
+    @apply text-noir-400 font-mono text-[10px] uppercase tracking-[0.15em];
+  }
+
+  /* TABLEAUX (TABLES) */
+  .table-dark thead tr { @apply border-b border-noir-700; }
+  .table-dark thead th {
+    @apply px-5 py-3.5 text-left text-[10px] font-mono font-medium text-noir-400
+           uppercase tracking-[0.15em] bg-noir-950;
+  }
+  .table-dark tbody tr {
+    @apply border-b border-noir-700 hover:bg-noir-900 transition-colors duration-150;
+  }
+  .table-dark tbody td { @apply px-5 py-4 text-sm; }
+}
+
+/* COUCHE UTILITIES (Classes d'effets visuels) */
+@layer utilities {
+  /* Décalages d'animations (Stagger) cascade */
+  .stagger-1 { animation-delay: 0.05s; }
+  .stagger-2 { animation-delay: 0.10s; }
+  .stagger-3 { animation-delay: 0.15s; }
+  .stagger-4 { animation-delay: 0.20s; }
+  .stagger-5 { animation-delay: 0.25s; }
+  .stagger-6 { animation-delay: 0.30s; }
+  .stagger-7 { animation-delay: 0.35s; }
+  .stagger-8 { animation-delay: 0.40s; }
+  .stagger-9 { animation-delay: 0.45s; }
+
+  /* Gradient de fond Mesh (Alliage ambre/ivoire diffus) */
+  .mesh-bg {
+    background-image:
+      radial-gradient(ellipse 70% 50% at 15% 40%, rgba(232,167,48,0.10) 0%, transparent 65%),
+      radial-gradient(ellipse 45% 60% at 85% 65%, rgba(232,167,48,0.05) 0%, transparent 65%);
+  }
+
+  /* Texte Gradient Doré/Ambre */
+  .text-gradient-sol {
+    background: linear-gradient(135deg, #F8CC55 0%, #E8A730 60%, #CC8D1E 100%);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+  }
+
+  /* Texture Graind de Film (Bruit visuel subtile) SVG */
+  .grain {
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='200' height='200'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.75' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='200' height='200' filter='url(%23n)' opacity='1'/%3E%3C/svg%3E");
+    background-repeat: repeat;
+  }
+}

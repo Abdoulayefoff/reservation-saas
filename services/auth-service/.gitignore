@@ -1,0 +1,14 @@
+/.env.local
+/.env.local.php
+/.env.*.local
+/.env.dev
+/.env.test
+/config/secrets/prod/prod.decrypt.private.php
+/public/bundles/
+/var/
+/vendor/
+
+/config/jwt/*.pem
+
+/phpunit.xml
+/.phpunit.cache/

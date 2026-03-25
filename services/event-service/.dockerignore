@@ -1,0 +1,7 @@
+vendor/
+var/cache/
+var/log/
+.env
+.env.local
+.env.dev
+.env.test

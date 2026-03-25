@@ -1,0 +1,20 @@
+# nelmio_api_doc.yaml – Configuration Swagger/OpenAPI pour User Service
+# Documentation interactive accessible à /api/doc
+
+nelmio_api_doc:
+    documentation:
+        info:
+            title: "User Service API"
+            description: "Service de gestion des profils utilisateurs"
+            version: "1.0.0"
+        components:
+            securitySchemes:
+                ApiGateway:
+                    type: apiKey
+                    name: X-User-Id
+                    in: header
+                    description: "ID utilisateur injecté par l'API Gateway"
+    areas:
+        path_patterns:
+            - ^/users
+            - ^/health

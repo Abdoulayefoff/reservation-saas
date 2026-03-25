@@ -1,0 +1,13 @@
+# Event Service — Variables d'environnement Symfony
+# En production Docker, ces valeurs sont surchargées par
+# les variables définies dans docker-compose.yml
+
+APP_ENV=dev
+APP_SECRET=change_me_in_production
+
+# Base de données PostgreSQL (event-db)
+# Host = nom du container Docker dans docker-compose.yml
+DATABASE_URL="postgresql://event_user:change_me@event-db:5432/event_db?serverVersion=16&charset=utf8"
+
+# URL du Ticket Service pour les appels HTTP inter-services
+TICKET_SERVICE_URL=http://ticket-service:8004

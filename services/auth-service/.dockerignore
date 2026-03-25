@@ -1,0 +1,8 @@
+vendor/
+var/cache/
+var/log/
+config/jwt/
+.env
+.env.local
+.env.dev
+.env.test
