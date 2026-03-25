@@ -8,6 +8,7 @@ import YAML from 'yamljs';
 import path from 'path';
 import { rateLimiter } from './middleware/rateLimiter';
 import { authenticate } from './middleware/auth';
+import { TICKET_INSTANCES, getNextTicketUrl } from './ticketLoadBalancer';
 
 const app = express();
 
@@ -20,7 +21,7 @@ const PORT = parseInt(process.env.PORT ?? '8000', 10);
 const AUTH_URL    = process.env.AUTH_SERVICE_URL    ?? 'http://auth-service:8001';
 const USER_URL    = process.env.USER_SERVICE_URL    ?? 'http://user-service:8002';
 const EVENT_URL   = process.env.EVENT_SERVICE_URL   ?? 'http://event-service:8003';
-const TICKET_URL  = process.env.TICKET_SERVICE_URL  ?? 'http://ticket-service:8004';
+
 
 // Sécurité globale
 
@@ -75,7 +76,7 @@ app.get('/health', (_req: Request, res: Response) => {
       auth:    AUTH_URL,
       users:   USER_URL,
       events:  EVENT_URL,
-      tickets: TICKET_URL,
+      tickets: TICKET_INSTANCES.map((i) => `${i.url} (weight=${i.weight})`),
     },
   });
 });
@@ -142,7 +143,7 @@ function makeProxy(target: string, _pathFrom: string, pathTo: string) {
 // La gateway ne filtre pas /api/auth/* car l'auth-service gère sa sécurité.
 app.use(
   '/api/auth',
-  (req: Request, res: Response, next: NextFunction) => {
+  (req: Request, _res: Response, next: NextFunction) => {
     // Express strip /api/auth — on préfixe avec /auth
     req.url = `/auth${req.url === '/' ? '' : req.url}`;
     next();
@@ -207,49 +208,26 @@ app.use(
 );
 
 // PARTIE 4 : Routes TICKETS (protégées)
-// /api/tickets/* → ticket-service:8004/tickets/*
+// /api/tickets/* → ticket-service-1:8004 ou ticket-service-2:8004 (weighted round-robin)
 // JWT requis : l'achat et la consultation de tickets sont liés à un compte.
-// Le ticket-service reçoit X-User-Id pour associer les tickets à l'utilisateur.
 app.use(
   '/api/tickets',
   authenticate,
-  makeProxy(TICKET_URL, 'tickets', 'tickets')
+  (req: Request, res: Response, next: NextFunction) => {
+    makeProxy(getNextTicketUrl(), 'tickets', 'tickets')(req, res, next);
+  }
 );
 
 // PARTIE 5 : Route Admin tickets
-// GET /api/admin/tickets → ticket-service:8004/tickets/admin
+// GET /api/admin/tickets → ticket-service (weighted round-robin) /tickets/admin
 // JWT + ROLE_ADMIN requis (vérifié côté ticket-service via X-User-Roles)
-// La gateway impose le JWT, le ticket-service impose le rôle admin.
 app.use(
   '/api/admin/tickets',
-  // Première vérification : le JWT doit être présent et valide, sans cette étape, n'importe qui pourrait accéder aux données admin.
   authenticate,
-  // Deuxième étape : réécriture de l'URL vers le endpoint admin du ticket-service.
   (req: Request, res: Response, next: NextFunction) => {
     req.url = '/tickets/admin' + (req.url === '/' ? '' : req.url);
-    next();
-  },
-  // Proxy spécifique vers ticket-service avec injection des headers X-User-*, pour que le ticket-service puisse vérifier le rôle ROLE_ADMIN dans X-User-Roles.
-  createProxyMiddleware({
-    target: TICKET_URL,
-    changeOrigin: true,
-    on: {
-      // Même logique que makeProxy : on transmet l'identité et on supprime le JWT brut.
-      // Le ticket-service ne connaît pas le JWT_SECRET, il lit uniquement les headers
-      proxyReq: (proxyReq, req) => {
-        const user = (req as Request).user;
-        if (user) {
-          proxyReq.setHeader('X-User-Id', user.userId);
-          proxyReq.setHeader('X-User-Roles', user.roles.join(','));
-          proxyReq.setHeader('X-User-Email', user.email);
-          proxyReq.removeHeader('Authorization');
-        }
-      },
-      error: (_err, _req, res) => {
-        (res as Response).status(502).json({ error: 'Bad Gateway', message: 'Ticket service indisponible.' });
-      },
-    },
-  })
+    makeProxy(getNextTicketUrl(), '', 'tickets/admin')(req, res, next);
+  }
 );
 
 // 404
@@ -293,7 +271,9 @@ if (process.env.NODE_ENV !== 'test') {
     console.log(`               Auth    → ${AUTH_URL}`);
     console.log(`               Users   → ${USER_URL}`);
     console.log(`               Events  → ${EVENT_URL}`);
-    console.log(`               Tickets → ${TICKET_URL}`);
+    TICKET_INSTANCES.forEach((i) =>
+      console.log(`               Tickets → ${i.url} (weight=${i.weight})`)
+    );
     console.log(`[API Gateway] CORS autorisé pour : ${allowedOrigins.join(', ')}`);
   });
 }

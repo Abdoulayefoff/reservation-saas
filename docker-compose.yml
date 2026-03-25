@@ -127,20 +127,24 @@ services:
   # Réseau : backend_network uniquement
 
   auth-service: # Service d'Authentification (Symfony/PHP)
-    build: 
+    build:
       context: ./services/auth-service # Dossier contenant le code et Dockerfile
-      dockerfile: Dockerfile 
-    container_name: reservation_auth_service 
-    restart: unless-stopped 
-    environment: 
-      APP_ENV: ${APP_ENV:-dev} 
-      DATABASE_URL: ${AUTH_DATABASE_URL} 
-      JWT_SECRET: ${JWT_SECRET} 
-      JWT_PASSPHRASE: ${JWT_PASSPHRASE} 
-      JWT_TTL: ${JWT_TTL:-3600} 
-      JWT_REFRESH_TTL: ${JWT_REFRESH_TTL:-604800} 
-      USER_SERVICE_URL: ${USER_SERVICE_URL} 
-      DEFAULT_URI: http://localhost:8001 
+      dockerfile: Dockerfile
+    container_name: reservation_auth_service
+    restart: unless-stopped
+    environment:
+      APP_ENV: ${APP_ENV:-dev}
+      DATABASE_URL: ${AUTH_DATABASE_URL}
+      JWT_SECRET: ${JWT_SECRET}
+      JWT_PASSPHRASE: ${JWT_PASSPHRASE}
+      JWT_TTL: ${JWT_TTL:-3600}
+      JWT_REFRESH_TTL: ${JWT_REFRESH_TTL:-604800}
+      # Chemins absolus des clés RSA dans le container (volume auth_jwt monté sur /app/config/jwt)
+      # Nécessaires pour que LexikJWTAuthenticationBundle trouve les clés sur un nouveau clone
+      JWT_SECRET_KEY: /app/config/jwt/private.pem
+      JWT_PUBLIC_KEY: /app/config/jwt/public.pem
+      USER_SERVICE_URL: ${USER_SERVICE_URL}
+      DEFAULT_URI: http://localhost:8001
     volumes: 
       - ./services/auth-service:/app # Code source local partagé pour le dev
       - auth_vendor:/app/vendor # vendor/ isolé dans un volume dédié
@@ -191,13 +195,14 @@ services:
   event-service: # Service de Gestion des Événements/Billetterie (Symfony/PHP)
     build:
       context: ./services/event-service # Dossier du code
-      dockerfile: Dockerfile 
-    restart: unless-stopped 
-    environment: 
-      APP_ENV: ${APP_ENV:-dev} 
-      DATABASE_URL: ${EVENT_DATABASE_URL} 
-      JWT_SECRET: ${JWT_SECRET} 
-      DEFAULT_URI: http://localhost:8003 
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    environment:
+      APP_ENV: ${APP_ENV:-dev}
+      DATABASE_URL: ${EVENT_DATABASE_URL}
+      JWT_SECRET: ${JWT_SECRET}
+      TICKET_SERVICE_URL: ${TICKET_SERVICE_URL}
+      DEFAULT_URI: http://localhost:8003
     volumes: 
       - ./services/event-service:/app # Code source local partagé
       - event_vendor:/app/vendor # vendor/ isolé dans un volume dédié
@@ -222,38 +227,71 @@ services:
   # node_modules/ et dist/ persistés dans des volumes nommés
   # Réseau : backend_network uniquement
 
-  ticket-service: # Service de Billetterie (Node.js/TypeScript)
-    build: 
-      context: ./services/ticket-service # Dossier du code
-      dockerfile: Dockerfile 
-    container_name: reservation_ticket_service 
-    restart: unless-stopped 
-    environment: 
-      NODE_ENV: ${NODE_ENV:-development} 
-      PORT: ${TICKET_SERVICE_PORT:-8004} 
-      DATABASE_URL: ${TICKET_DATABASE_URL} 
-      JWT_SECRET: ${JWT_SECRET} 
-      RABBITMQ_URL: ${RABBITMQ_URL} # URL de connexion à RabbitMQ
-      EVENT_SERVICE_URL: ${EVENT_SERVICE_URL} # URL pour réserver des places
-    volumes: 
-      - ./services/ticket-service:/app # Code source local partagé
-      - ticket_node_modules:/app/node_modules # Dépendances isolées
-      - ticket_dist:/app/dist # Build TypeScript isolé
-    ports:
-      - "8004:8004" 
+  # LOAD BALANCING – Deux instances du ticket-service
+  # Round-Robin Pondéré géré par l'API Gateway : ticket-service-1 (weight=6), ticket-service-2 (weight=4)
+  # Sur 10 requêtes : 6 vers l'instance 1 (principale), 4 vers l'instance 2 (secondaire)
+
+  ticket-service-1: # Instance principale du Ticket Service (weight=6)
+    build:
+      context: ./services/ticket-service
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    hostname: ticket-service-1
+    environment:
+      NODE_ENV: ${NODE_ENV:-development}
+      PORT: ${TICKET_SERVICE_PORT:-8004}
+      DATABASE_URL: ${TICKET_DATABASE_URL}
+      JWT_SECRET: ${JWT_SECRET}
+      RABBITMQ_URL: ${RABBITMQ_URL}
+      EVENT_SERVICE_URL: ${EVENT_SERVICE_URL}
+    volumes:
+      - ./services/ticket-service:/app
+      - ticket1_node_modules:/app/node_modules
+      - ticket1_dist:/app/dist
     depends_on:
-      ticket-db: 
-        condition: service_healthy 
-      rabbitmq: 
-        condition: service_healthy 
-    networks: 
+      ticket-db:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+    networks:
       - backend_network
-    healthcheck: 
-      test: ["CMD-SHELL", "wget -qO- http://localhost:8004/health || exit 1"] # Vérifie la route /health
-      interval: 15s 
-      timeout: 5s 
-      retries: 5 
-      start_period: 60s 
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:8004/health || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 60s
+
+  ticket-service-2: # Instance secondaire du Ticket Service (weight=4)
+    build:
+      context: ./services/ticket-service
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    hostname: ticket-service-2
+    environment:
+      NODE_ENV: ${NODE_ENV:-development}
+      PORT: ${TICKET_SERVICE_PORT:-8004}
+      DATABASE_URL: ${TICKET_DATABASE_URL}
+      JWT_SECRET: ${JWT_SECRET}
+      RABBITMQ_URL: ${RABBITMQ_URL}
+      EVENT_SERVICE_URL: ${EVENT_SERVICE_URL}
+    volumes:
+      - ./services/ticket-service:/app
+      - ticket2_node_modules:/app/node_modules
+      - ticket2_dist:/app/dist
+    depends_on:
+      ticket-db:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+    networks:
+      - backend_network
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:8004/health || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 60s
 
   notification-service: # Service de Notifications (Node.js/TypeScript)
     build: 
@@ -298,7 +336,8 @@ services:
       AUTH_SERVICE_URL: ${AUTH_SERVICE_URL} 
       USER_SERVICE_URL: ${USER_SERVICE_URL} 
       EVENT_SERVICE_URL: ${EVENT_SERVICE_URL} # URL de l'Event Service
-      TICKET_SERVICE_URL: ${TICKET_SERVICE_URL} # URL du Ticket Service
+      TICKET_SERVICE_URL_1: ${TICKET_SERVICE_URL_1} # Instance principale (weight=6)
+      TICKET_SERVICE_URL_2: ${TICKET_SERVICE_URL_2} # Instance secondaire (weight=4)
       CORS_ALLOWED_ORIGINS: ${CORS_ALLOWED_ORIGINS} # Origines autorisées (CORS)
     volumes: 
       - ./services/api-gateway:/app # Code source local partagé
@@ -314,7 +353,9 @@ services:
         condition: service_healthy 
       event-service: 
         condition: service_healthy 
-      ticket-service: 
+      ticket-service-1:
+        condition: service_healthy
+      ticket-service-2:
         condition: service_healthy
     networks: # Raccordement aux deux réseaux
       - frontend_network # Côté public (Nginx)
@@ -407,10 +448,14 @@ volumes:
     name: reservation_auth_jwt
 
   # Dépendances Node.js (node_modules/ et builds dist/)
-  ticket_node_modules: # node_modules Ticket
-    name: reservation_ticket_node_modules
-  ticket_dist: # dossier dist/ Ticket
-    name: reservation_ticket_dist
+  ticket1_node_modules: # node_modules Ticket instance 1
+    name: reservation_ticket1_node_modules
+  ticket1_dist: # dist/ Ticket instance 1
+    name: reservation_ticket1_dist
+  ticket2_node_modules: # node_modules Ticket instance 2
+    name: reservation_ticket2_node_modules
+  ticket2_dist: # dist/ Ticket instance 2
+    name: reservation_ticket2_dist
   notification_node_modules:
     name: reservation_notification_node_modules
   notification_dist: 

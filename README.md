@@ -15,26 +15,35 @@
 ## 1. Architecture
 
 ```
-                          ┌─────────────────────────────────────┐
-                          │         frontend_network             │
-  Navigateur ──── :80 ──▶ │  Nginx (Load Balancer)               │
-                          │     │            │                   │
-                          │  Frontend     API Gateway :8000       │
-                          └─────────────────────────────────────┘
+                          ┌─────────────────────────────────────────┐
+                          │            frontend_network              │
+  Navigateur ──── :80 ──▶ │  Nginx (Reverse Proxy)                   │
+                          │     │               │                    │
+                          │  Frontend :3000   API Gateway :8000      │
+                          └─────────────────────────────────────────┘
                                                 │
-                          ┌─────────────────────▼───────────────┐
-                          │          backend_network             │
-                          │                                      │
-                          │  Auth Service    :8001  (Symfony 7)  │
-                          │  User Service    :8002  (Symfony 7)  │
-                          │  Event Service   :8003  (Symfony 7)  │
-                          │  Ticket Service  :8004  (Node.js)    │
-                          │  Notif. Service  :8005  (Node.js)    │
-                          │                                      │
-                          │  PostgreSQL x4   :5432-5435          │
-                          │  RabbitMQ        :5672 / :15672      │
-                          └─────────────────────────────────────┘
+                          ┌─────────────────────▼─────────────────────┐
+                          │              backend_network               │
+                          │                                            │
+                          │  Auth Service      :8001  (Symfony 7)      │
+                          │  User Service      :8002  (Symfony 7)      │
+                          │  Event Service     :8003  (Symfony 7)      │
+                          │                                            │
+                          │  Ticket Service ── Weighted Round-Robin ── │
+                          │    ├─ ticket-service-1 :8004  (weight=6)   │
+                          │    └─ ticket-service-2 :8004  (weight=4)   │
+                          │                                            │
+                          │  Notif. Service    :8005  (Node.js)        │
+                          │                                            │
+                          │  PostgreSQL x4     :5432–5435              │
+                          │  RabbitMQ          :5672 / :15672          │
+                          └────────────────────────────────────────────┘
 ```
+
+**Load balancing ticket-service (Weighted Round-Robin) :**
+L'API Gateway gère un pool de 10 slots `[url1 x6, url2 x4]` parcouru en boucle. Sur 10 requêtes : 6 vers `ticket-service-1` (60 %) et 4 vers `ticket-service-2` (40 %).
+
+> **Les deux instances écoutent sur le même port 8004** — c'est normal. Chaque instance tourne dans un conteneur Docker avec son propre réseau virtuel isolé. L'API Gateway les contacte via leur nom DNS Docker (`http://ticket-service-1:8004` / `http://ticket-service-2:8004`), comme deux serveurs physiques distincts. Aucune instance n'expose de port sur l'hôte.
 
 **Flux de messagerie asynchrone :**
 `Ticket Service` → publie sur exchange `ticket_events` (topic) → queue `ticket.confirmed` → `Notification Service` consomme
@@ -81,7 +90,7 @@
 
 ```bash
 # 1. Cloner le dépôt
-git clone https://github.com/Abdoulayefoff/reservation-saas.git
+git clone git@github.com:Abdoulayefoff/reservation-saas.git
 cd reservation-saas
 
 # 2. Lancer le script d'initialisation (tout-en-un)
@@ -191,13 +200,20 @@ reservation-saas/
 │   └── Dockerfile
 │
 └── services/
-    ├── api-gateway/                  ← Node.js/Express – Routing + Validation JWT
+    ├── api-gateway/                  ← Node.js/Express – Routing + Validation JWT + WRR
+    │   ├── src/ticketLoadBalancer.ts ← Weighted Round-Robin ticket-service (pool 6/4)
+    │   └── tests/                    ← Jest : app, loadbalancer, middleware/auth
     ├── auth-service/                 ← Symfony 7 – Authentification + JWT RS256
+    │   └── tests/                    ← PHPUnit : Controller/, Entity/, Service/
     ├── user-service/                 ← Symfony 7 – Profils utilisateurs
+    │   └── tests/                    ← PHPUnit : Entity/, Service/
     ├── event-service/                ← Symfony 7 – Gestion des événements
+    │   └── tests/                    ← PHPUnit : Controller/, Entity/, Service/
     ├── ticket-service/               ← Node.js – Achat billets + RabbitMQ publisher
-    │   └── prisma/                   ← Schéma et migrations Prisma
+    │   ├── prisma/                   ← Schéma et migrations Prisma
+    │   └── tests/                    ← Jest : ticketService, rabbitMqService
     └── notification-service/         ← Node.js – Consumer RabbitMQ
+        └── tests/                    ← Jest : notificationService
 ```
 
 ---
@@ -225,10 +241,12 @@ Copier `.env.example` en `.env` (fait automatiquement par `setup.sh`).
 | `USER_DATABASE_URL`    | URL Doctrine complète user-service (calculée)            | `postgresql://...`             |
 | `EVENT_DATABASE_URL`   | URL Doctrine complète event-service (calculée)           | `postgresql://...`             |
 | `TICKET_DATABASE_URL`  | URL Prisma complète ticket-service (calculée)            | `postgresql://...`             |
-| `AUTH_SERVICE_URL`     | URL interne auth-service (réseau Docker)                 | `http://auth-service:8001`     |
-| `USER_SERVICE_URL`     | URL interne user-service (réseau Docker)                 | `http://user-service:8002`     |
-| `EVENT_SERVICE_URL`    | URL interne event-service (réseau Docker)                | `http://event-service:8003`    |
-| `TICKET_SERVICE_URL`   | URL interne ticket-service (réseau Docker)               | `http://ticket-service:8004`   |
+| `AUTH_SERVICE_URL`      | URL interne auth-service (réseau Docker)                         | `http://auth-service:8001`      |
+| `USER_SERVICE_URL`      | URL interne user-service (réseau Docker)                         | `http://user-service:8002`      |
+| `EVENT_SERVICE_URL`     | URL interne event-service (réseau Docker)                        | `http://event-service:8003`     |
+| `TICKET_SERVICE_URL`    | URL instance principale (event-service + user-service)           | `http://ticket-service-1:8004`  |
+| `TICKET_SERVICE_URL_1`  | Instance principale ticket-service (weight=6 — 60 % du trafic)  | `http://ticket-service-1:8004`  |
+| `TICKET_SERVICE_URL_2`  | Instance secondaire ticket-service (weight=4 — 40 % du trafic)  | `http://ticket-service-2:8004`  |
 | `API_GATEWAY_PORT`     | Port d'écoute de l'API Gateway                           | `8000`                         |
 | `CORS_ALLOWED_ORIGINS` | Origines autorisées CORS                                 | `http://localhost,http://localhost:3000` |
 
@@ -348,13 +366,35 @@ make test-node      # Tests Jest uniquement (Node.js)
 make test-coverage  # Rapport de couverture HTML
 make urls           # Afficher toutes les URLs des services
 make clean          # Supprimer containers, volumes et images
-make scale-events   # Lancer 3 instances event-service (test load balancer)
+make scale-events          # Lancer 3 instances event-service (scaling horizontal)
 ```
 
 ---
 
-## 12. Auteurs
+## 12. Tester le load balancer
 
-Abdoulaye FOFANA
+Un script dédié permet de vérifier la distribution Weighted Round-Robin en conditions réelles :
+
+```bash
+./test-loadbalancer.sh
+```
+
+Le script exécute 5 étapes :
+
+| Étape | Action | Résultat attendu |
+|-------|--------|-----------------|
+| 0 | Vérification santé des 2 instances | Les deux `healthy` |
+| 1 | Obtention d'un token JWT | Token valide |
+| 2 | 10 requêtes (1 cycle complet) | 6 → instance-1 / 4 → instance-2 |
+| 3 | 20 requêtes (2 cycles) | 12 → instance-1 / 8 → instance-2 (60/40) |
+| 4 | Arrêt de ticket-service-1 (panne simulée) | 4 réponses OK (instance-2) + 6 erreurs 502 |
+| 5 | Redémarrage de ticket-service-1 | Les deux instances reprennent le trafic en 6/4 |
+
+> Le script utilise l'en-tête de réponse `X-Served-By` (injecté par chaque instance) pour identifier quelle instance a traité chaque requête.
+
+---
+
+## 13. Auteurs
 Ayman EL KARROUSSI
+Abdoulaye FOFANA
 

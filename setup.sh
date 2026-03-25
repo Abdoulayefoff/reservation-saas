@@ -100,6 +100,15 @@ if ! docker info &> /dev/null; then
 fi
 info "Docker est en cours d'exécution ✅"
 
+# Vérification du port 80 (utilisé par Nginx)
+if lsof -i :80 -sTCP:LISTEN &>/dev/null 2>&1 || ss -tlnp 2>/dev/null | grep -q ':80 '; then
+    warn "⚠️  Le port 80 est déjà occupé sur cette machine (Apache, httpd, ou autre service)."
+    warn "   Nginx ne pourra pas démarrer. Arrêtez le service qui utilise le port 80 avant de continuer."
+    warn "   Sur Linux  : sudo systemctl stop apache2  (ou httpd)"
+    warn "   Sur macOS  : sudo apachectl stop"
+    warn "   Astuce     : identifiez le processus avec : lsof -i :80"
+fi
+
 # ÉTAPE 2 – Configuration du fichier .env
 section "Étape 2/5 – Configuration de l'environnement"
 
@@ -256,7 +265,8 @@ info "Attente de l'initialisation des services (peut prendre 2-3 minutes)..."
 wait_healthy "reservation_auth_service" 180
 wait_healthy "reservation_user_service" 180
 wait_healthy "reservation-saas-event-service-1" 180
-wait_healthy "reservation_ticket_service" 180
+wait_healthy "reservation-saas-ticket-service-1-1" 180
+wait_healthy "reservation-saas-ticket-service-2-1" 180
 wait_healthy "reservation_notification_service" 180
 wait_healthy "reservation_api_gateway" 180
 wait_healthy "reservation_frontend" 60

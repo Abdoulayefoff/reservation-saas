@@ -4,6 +4,11 @@
 # set -e : arrête le script à la première erreur
 set -e
 
+# Symfony Dotenv exige qu'un fichier .env existe dans le répertoire de travail.
+# Sur un nouveau clone, le fichier peut être absent si ignoré par Git.
+# On le crée vide s'il n'existe pas pour éviter un crash au démarrage.
+[ ! -f ".env" ] && touch .env
+
 # Installation automatique des dépendances si vendor/ est absent
 # Cela permet de lancer le projet avec un simple docker compose up
 # sans avoir besoin de PHP ou Composer sur la machine hôte

@@ -14,7 +14,10 @@ const allowedOrigins = (process.env.CORS_ALLOWED_ORIGINS ?? 'http://api-gateway:
   .split(',') // Divise la chaîne par virgule si plusieurs origines
   .map((o) => o.trim()); // Nettoie les espaces blancs autour
   
-app.use(cors({ origin: allowedOrigins })); 
+app.use(cors({ origin: allowedOrigins }));
+
+// Identifie l'instance dans les réponses — utile pour tester le load balancing
+app.use((_req, res, next) => { res.setHeader('X-Served-By', process.env.HOSTNAME ?? 'unknown'); next(); });
 
 app.use(express.json());
 
