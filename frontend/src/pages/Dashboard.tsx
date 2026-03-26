@@ -66,6 +66,12 @@ export default function Dashboard() {
   // Filtre de statut pour l'onglet événements
   const [statusFilter, setStatusFilter] = useState<'ALL' | 'PUBLISHED' | 'DRAFT' | 'CANCELLED'>('ALL');
 
+  // États pour l'édition d'un utilisateur (Admin)
+  const [showEditUserModal, setShowEditUserModal] = useState(false);
+  const [editingUser, setEditingUser] = useState<AdminUser | null>(null);
+  const [editUserForm, setEditUserForm] = useState({ firstName: '', lastName: '' });
+  const [isEditUserSubmitting, setIsEditUserSubmitting] = useState(false);
+
   // États pour l'édition d'un événement
   const [showEditModal, setShowEditModal] = useState(false);
   const [editingEvent, setEditingEvent] = useState<EventType | null>(null);
@@ -236,6 +242,34 @@ export default function Dashboard() {
       showToast(err.response?.data?.message || "Erreur lors de la suppression.", 'error');
     } finally {
       setDeletingId(null);
+    }
+  };
+
+  /** Ouvre la modale d'édition d'un utilisateur (Admin). */
+  const handleOpenEditUser = (u: AdminUser) => {
+    setEditingUser(u);
+    setEditUserForm({ firstName: u.firstName, lastName: u.lastName });
+    setShowEditUserModal(true);
+  };
+
+  /** Soumet la mise à jour d'un utilisateur depuis l'interface Admin. */
+  const handleEditUser = async (e: React.SyntheticEvent<HTMLFormElement>) => {
+    e.preventDefault();
+    if (!editingUser) return;
+    setIsEditUserSubmitting(true);
+    try {
+      await api.put(`/users/${editingUser.id}`, {
+        first_name: editUserForm.firstName,
+        last_name: editUserForm.lastName,
+      });
+      showToast('Utilisateur mis à jour.', 'success');
+      setShowEditUserModal(false);
+      setEditingUser(null);
+      await fetchAdminUsers();
+    } catch (err: any) {
+      showToast(err.response?.data?.message || 'Erreur lors de la mise à jour.', 'error');
+    } finally {
+      setIsEditUserSubmitting(false);
     }
   };
 
@@ -497,13 +531,22 @@ export default function Dashboard() {
                         <td className="text-noir-300">{u.email}</td>
                         <td className="font-mono text-xs text-noir-500">{u.id}</td>
                         <td className="text-right">
-                          <button
-                            onClick={() => handleDeleteUser(u.id)}
-                            className="p-1.5 rounded-sm text-noir-400 hover:text-red-400 hover:bg-noir-800 transition-colors"
-                            title="Supprimer l'utilisateur"
-                          >
-                            <Trash2 className="w-3.5 h-3.5" />
-                          </button>
+                          <div className="flex items-center justify-end gap-1">
+                            <button
+                              onClick={() => handleOpenEditUser(u)}
+                              className="p-1.5 rounded-sm text-noir-400 hover:text-sol hover:bg-noir-800 transition-colors"
+                              title="Modifier l'utilisateur"
+                            >
+                              <Edit2 className="w-3.5 h-3.5" />
+                            </button>
+                            <button
+                              onClick={() => handleDeleteUser(u.id)}
+                              className="p-1.5 rounded-sm text-noir-400 hover:text-red-400 hover:bg-noir-800 transition-colors"
+                              title="Supprimer l'utilisateur"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                          </div>
                         </td>
                       </tr>
                     ))}
@@ -824,6 +867,75 @@ export default function Dashboard() {
                   {isEditSubmitting
                     ? <><Loader2 className="w-4 h-4 animate-spin" /> Mise à jour...</>
                     : 'Enregistrer →'
+                  }
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+      {/* MODALE ÉDITION UTILISATEUR (Admin) */}
+      {showEditUserModal && editingUser && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+          <div
+            className="absolute inset-0 bg-black/40 backdrop-blur-sm"
+            onClick={() => !isEditUserSubmitting && setShowEditUserModal(false)}
+          />
+          <div className="relative card-dark max-w-md w-full p-7 shadow-2xl animate-fade-up">
+            <button
+              onClick={() => setShowEditUserModal(false)}
+              disabled={isEditUserSubmitting}
+              className="absolute top-4 right-4 text-noir-500 hover:text-noir-200 transition-colors"
+            >
+              <X className="w-4 h-4" />
+            </button>
+            <div className="label-sol mb-2">Admin</div>
+            <h2 className="font-display font-semibold text-xl text-noir-50 mb-6">Modifier l'utilisateur</h2>
+            <form onSubmit={handleEditUser} className="space-y-4">
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="label-dim block mb-2">Prénom</label>
+                  <input
+                    type="text"
+                    required
+                    value={editUserForm.firstName}
+                    onChange={(e) => setEditUserForm({ ...editUserForm, firstName: e.target.value })}
+                    className="input-dark"
+                  />
+                </div>
+                <div>
+                  <label className="label-dim block mb-2">Nom</label>
+                  <input
+                    type="text"
+                    required
+                    value={editUserForm.lastName}
+                    onChange={(e) => setEditUserForm({ ...editUserForm, lastName: e.target.value })}
+                    className="input-dark"
+                  />
+                </div>
+              </div>
+              <div>
+                <label className="label-dim block mb-2">Email</label>
+                <input
+                  type="email"
+                  disabled
+                  value={editingUser.email}
+                  className="input-dark opacity-40 cursor-not-allowed"
+                />
+              </div>
+              <div className="flex justify-end gap-3 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setShowEditUserModal(false)}
+                  disabled={isEditUserSubmitting}
+                  className="btn-ghost"
+                >
+                  Annuler
+                </button>
+                <button type="submit" disabled={isEditUserSubmitting} className="btn-sol">
+                  {isEditUserSubmitting
+                    ? <><Loader2 className="w-3.5 h-3.5 animate-spin" /> Sauvegarde...</>
+                    : <><Edit2 className="w-3.5 h-3.5" /> Enregistrer</>
                   }
                 </button>
               </div>

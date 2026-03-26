@@ -29,6 +29,66 @@ class UserController extends AbstractController
         private readonly UserService $userService, 
     ) {} 
 
+    // PATCH /users/me – Mise à jour du profil de l'utilisateur connecté
+    // Doit être déclaré AVANT /users/{id} pour éviter que "me" soit capturé comme ID
+
+    #[Route('/users/me', name: 'users_me_update', methods: ['PATCH'])]
+    #[OA\Patch(
+        summary: 'Mettre à jour son propre profil',
+        description: 'Modifie le prénom et/ou le nom de l\'utilisateur connecté. L\'ID est déduit du token via X-User-Id.',
+        tags: ['Users'],
+    )]
+    #[OA\RequestBody(
+        content: new OA\JsonContent(
+            properties: [
+                new OA\Property(property: 'firstName', type: 'string', example: 'Abdoulaye'),
+                new OA\Property(property: 'lastName', type: 'string', example: 'Fofana'),
+            ]
+        )
+    )]
+    #[OA\Response(response: 200, description: 'Profil mis à jour')]
+    #[OA\Response(response: 401, description: 'Non authentifié')]
+    #[OA\Response(response: 404, description: 'Profil introuvable')]
+    public function updateMe(Request $request): JsonResponse
+    {
+        $userId = $request->headers->get('X-User-Id', '');
+        if (!$userId) {
+            return $this->json(['error' => 'Non authentifié.'], Response::HTTP_UNAUTHORIZED);
+        }
+
+        $data = json_decode($request->getContent(), true) ?? [];
+
+        // Accepte camelCase (frontend) et snake_case (API directe)
+        $normalized = [];
+        if (isset($data['firstName']))  $normalized['first_name'] = $data['firstName'];
+        if (isset($data['first_name'])) $normalized['first_name'] = $data['first_name'];
+        if (isset($data['lastName']))   $normalized['last_name'] = $data['lastName'];
+        if (isset($data['last_name']))  $normalized['last_name'] = $data['last_name'];
+        if (isset($data['phone']))      $normalized['phone'] = $data['phone'];
+        if (isset($data['avatar_url'])) $normalized['avatar_url'] = $data['avatar_url'];
+
+        try {
+            $profile = $this->userService->updateProfile($userId, $normalized);
+            $serialized = $this->userService->serializeProfile($profile);
+
+            // Retourne les champs en camelCase au niveau racine pour faciliter le spread côté frontend
+            return $this->json([
+                'message'    => 'Profil mis à jour.',
+                'id'         => $serialized['id'],
+                'firstName'  => $serialized['first_name'],
+                'lastName'   => $serialized['last_name'],
+                'email'      => $serialized['email'],
+                'phone'      => $serialized['phone'],
+                'avatar_url' => $serialized['avatar_url'],
+                'profile'    => $serialized,
+            ]);
+        } catch (\InvalidArgumentException $e) {
+            return $this->json(['error' => $e->getMessage()], Response::HTTP_NOT_FOUND);
+        } catch (\Throwable) {
+            return $this->json(['error' => 'Une erreur interne est survenue.'], Response::HTTP_INTERNAL_SERVER_ERROR);
+        }
+    }
+
     // GET /users – Liste de tous les profils (Admin uniquement)
 
     #[Route('/users', name: 'users_list', methods: ['GET'])] 

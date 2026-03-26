@@ -219,6 +219,56 @@ paths:
         '401':
           description: Non authentifié
 
+  /api/users:
+    get:
+      summary: Liste tous les utilisateurs (Admin requis)
+      tags: [Users]
+      security:
+        - BearerAuth: []
+      parameters:
+        - in: query
+          name: page
+          schema:
+            type: integer
+            default: 1
+        - in: query
+          name: limit
+          schema:
+            type: integer
+            default: 20
+      responses:
+        '200':
+          description: Liste des profils
+        '401':
+          description: Non authentifié
+        '403':
+          description: Accès refusé (ROLE_ADMIN requis)
+
+  /api/users/me:
+    patch:
+      summary: Mettre à jour son propre profil
+      tags: [Users]
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                firstName:
+                  type: string
+                  example: Abdoulaye
+                lastName:
+                  type: string
+                  example: Fofana
+      responses:
+        '200':
+          description: Profil mis à jour
+        '401':
+          description: Non authentifié
+
   /api/users/{id}:
     get:
       summary: Profil d'un utilisateur (JWT requis)
@@ -238,7 +288,7 @@ paths:
         '401':
           description: Non authentifié
     put:
-      summary: Modifier un profil utilisateur (JWT requis)
+      summary: Modifier un profil utilisateur (Owner ou Admin)
       tags: [Users]
       security:
         - BearerAuth: []
@@ -255,11 +305,43 @@ paths:
           application/json:
             schema:
               type: object
+              properties:
+                first_name:
+                  type: string
+                last_name:
+                  type: string
+                phone:
+                  type: string
+                avatar_url:
+                  type: string
       responses:
         '200':
           description: Profil mis à jour
         '401':
           description: Non authentifié
+        '403':
+          description: Accès refusé
+    delete:
+      summary: Supprimer un utilisateur (Admin requis)
+      tags: [Users]
+      security:
+        - BearerAuth: []
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Utilisateur supprimé
+        '401':
+          description: Non authentifié
+        '403':
+          description: Accès refusé (ROLE_ADMIN requis)
+        '404':
+          description: Introuvable
 
   /api/tickets:
     get:
