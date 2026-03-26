@@ -26,8 +26,8 @@ const EVENT_URL   = process.env.EVENT_SERVICE_URL   ?? 'http://event-service:800
 // Sécurité globale
 
 // Helmet : headers HTTP de sécurité (anti-XSS, anti-clickjacking, etc.)
-// Appliqué en premier car il doit agir sur toutes les réponses sans exception.
-app.use(helmet());
+// contentSecurityPolicy désactivé pour permettre le chargement de Swagger UI (inline scripts/styles).
+app.use(helmet({ contentSecurityPolicy: false }));
 
 // Lecture et nettoyage de la liste des origines CORS autorisées.
 // La variable d'env est une chaîne CSV (ex: "http://localhost:3000,https://prod.com").

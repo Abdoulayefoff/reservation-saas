@@ -56,7 +56,7 @@ test-node: ## Tests Jest (api-gateway + ticket-service + notification-service)
 	@echo "$(GREEN)── API Gateway (Jest) ──$(NC)"
 	docker compose exec -T api-gateway npm test -- --coverage
 	@echo "$(GREEN)── Ticket Service (Jest) ──$(NC)"
-	docker compose exec -T ticket-service npm test -- --coverage
+	docker compose exec -T ticket-service-1 npm test -- --coverage
 	@echo "$(GREEN)── Notification Service (Jest) ──$(NC)"
 	docker compose exec -T notification-service npm test -- --coverage
 
@@ -71,7 +71,7 @@ migrate: ## Lancer toutes les migrations
 	docker compose exec -T auth-service php bin/console doctrine:migrations:migrate --no-interaction
 	docker compose exec -T user-service php bin/console doctrine:migrations:migrate --no-interaction
 	docker compose exec -T event-service php bin/console doctrine:migrations:migrate --no-interaction
-	docker compose exec -T ticket-service npx prisma db push --accept-data-loss
+	docker compose exec -T ticket-service-1 npx prisma db push --accept-data-loss
 
 # SHELLS
 
@@ -85,7 +85,7 @@ shell-event: ## Shell dans event-service
 	docker compose exec event-service bash
 
 shell-ticket: ## Shell dans ticket-service
-	docker compose exec ticket-service sh
+	docker compose exec ticket-service-1 sh
 
 shell-gateway: ## Shell dans api-gateway
 	docker compose exec api-gateway sh
@@ -123,5 +123,5 @@ urls: ## Afficher toutes les URLs des services
 	@echo "  Swagger Auth      : http://localhost:8001/api/doc"
 	@echo "  Swagger User      : http://localhost:8002/api/doc"
 	@echo "  Swagger Event     : http://localhost:8003/api/doc"
-	@echo "  Swagger Ticket    : http://localhost:8004/api/doc"
+	@echo "  Swagger Ticket    : http://localhost:8004/api-docs"
 	@echo ""
