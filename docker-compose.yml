@@ -115,11 +115,11 @@ services:
     networks: 
       - backend_network 
     healthcheck:
-      test: ["CMD", "rabbitmq-diagnostics", "ping"]
-      interval: 15s 
-      timeout: 10s 
-      retries: 5 
-      start_period: 30s 
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
+      interval: 15s
+      timeout: 15s
+      retries: 10
+      start_period: 60s
 
   # MICROSERVICES SYMFONY – Auth, User, Event
   # Volumes : code source monté depuis l'hôte
