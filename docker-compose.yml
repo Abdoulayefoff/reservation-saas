@@ -100,8 +100,9 @@ services:
   # RABBITMQ – Broker de messages asynchrones
   # Réseau : backend_network uniquement
   rabbitmq: # Agent de Message (Queue) pour l'Asynchrone
-    image: rabbitmq:3-management 
-    container_name: reservation_rabbitmq 
+    image: rabbitmq:3-management
+    container_name: reservation_rabbitmq
+    user: rabbitmq
     restart: unless-stopped # Redémarrage automatique en cas d'echec
     environment: 
       RABBITMQ_DEFAULT_USER: ${RABBITMQ_USER} 
@@ -259,8 +260,8 @@ services:
       test: ["CMD-SHELL", "wget -qO- http://localhost:8004/health || exit 1"]
       interval: 15s
       timeout: 5s
-      retries: 5
-      start_period: 60s
+      retries: 10
+      start_period: 180s
 
   ticket-service-2: # Instance secondaire du Ticket Service (weight=4)
     build:
@@ -290,8 +291,8 @@ services:
       test: ["CMD-SHELL", "wget -qO- http://localhost:8004/health || exit 1"]
       interval: 15s
       timeout: 5s
-      retries: 5
-      start_period: 60s
+      retries: 10
+      start_period: 180s
 
   notification-service: # Service de Notifications (Node.js/TypeScript)
     build: 
