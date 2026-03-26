@@ -288,10 +288,12 @@ check_health() {
 }
 
 check_health "Nginx"               "http://localhost/health"
-check_health "Auth Service"        "http://localhost/api/auth/health"
-check_health "User Service"        "http://localhost/api/users/health"
-check_health "Event Service"       "http://localhost/api/events/health"
-check_health "Ticket Service"      "http://localhost/api/tickets/health"
+check_health "Auth Service"        "http://localhost:8001/health"
+check_health "User Service"        "http://localhost:8002/health"
+check_health "Event Service"       "http://localhost:8003/health"
+check_health "Ticket Service"      "http://localhost:8004/health"
+check_health "Notification Service" "http://localhost:8005/health"
+check_health "API Gateway"         "http://localhost:8000/health"
 
 # RÉSUMÉ FINAL
 echo ""
